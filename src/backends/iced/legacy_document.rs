@@ -1,3 +1,4 @@
+use super::code_fence::{normalize_code_language, wrap_fenced_code};
 use super::{MarkState, UpdateMsg};
 
 /// A fenced or indented code block extracted from markdown source.
@@ -23,28 +24,9 @@ impl CodeBlock {
     /// Reconstructs a fenced markdown snippet suitable for `iced::widget::markdown::Content::parse`.
     #[must_use]
     pub fn fence_markdown(&self) -> String {
-        fence_markdown_for_codeblock(self.language.as_deref(), &self.code)
+        let lang = self.language.as_deref().unwrap_or("");
+        wrap_fenced_code(self.fence_char, self.open_fence_len, lang, &self.code)
     }
-}
-
-/// Builds a fenced markdown snippet for [`iced::widget::markdown::Content::parse`].
-#[must_use]
-pub fn fence_markdown_for_codeblock(language: Option<&str>, body: &str) -> String {
-    let language = normalize_code_language(language);
-    let lang = language.as_deref().unwrap_or("");
-    let body = body.strip_suffix('\n').unwrap_or(body);
-    wrap_fenced_code('`', 3, lang, body)
-}
-
-/// Parses a code fence into iced markdown items (syntax highlighting when `highlighter` is enabled).
-#[must_use]
-pub fn iced_markdown_items_for_codeblock(
-    language: Option<&str>,
-    code: &str,
-) -> Vec<iced::widget::markdown::Item> {
-    use iced::widget::markdown;
-    let fence = fence_markdown_for_codeblock(language, code);
-    markdown::Content::parse(&fence).items().to_vec()
 }
 
 /// One renderable part of a split markdown document.
@@ -210,20 +192,6 @@ fn rich_segment(markdown: &str, preprocess_rich: &impl Fn(&str) -> String) -> Ma
     MarkSegment::Rich(MarkState::with_html_and_markdown(&processed))
 }
 
-fn normalize_code_language(language: Option<&str>) -> Option<String> {
-    let language = language.unwrap_or("").trim();
-    if language.is_empty() {
-        return None;
-    }
-
-    Some(match language.to_ascii_lowercase().as_str() {
-        "powershell" | "ps1" | "pwsh" => "powershell".to_string(),
-        "shell" | "sh" | "bash" | "zsh" => "bash".to_string(),
-        "yml" | "yaml" => "yaml".to_string(),
-        other => other.to_string(),
-    })
-}
-
 fn code_segment(
     fence_char: char,
     open_fence_len: usize,
@@ -238,28 +206,6 @@ fn code_segment(
         fence_char,
         open_fence_len,
     })
-}
-
-fn wrap_fenced_code(fence_char: char, open_fence_len: usize, language: &str, body: &str) -> String {
-    let fence_len = wrapping_fence_len(open_fence_len, body);
-    let fence = fence_char.to_string().repeat(fence_len);
-    if language.is_empty() {
-        format!("{fence}\n{body}\n{fence}")
-    } else {
-        format!("{fence}{language}\n{body}\n{fence}")
-    }
-}
-
-fn wrapping_fence_len(open_fence_len: usize, body: &str) -> usize {
-    let mut fence_len = open_fence_len.max(3);
-    for line in body.lines() {
-        let trimmed = line.trim_start();
-        let run = trimmed.chars().take_while(|ch| *ch == '`').count();
-        if run >= 3 {
-            fence_len = fence_len.max(run + 1);
-        }
-    }
-    fence_len
 }
 
 fn find_fenced_code_block(source: &str, from: usize) -> Option<FencedCodeBlock> {
