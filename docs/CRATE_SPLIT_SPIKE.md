@@ -13,7 +13,7 @@ Requirement R1.7 asks whether frostmark should split into `frostmark-core` + `fr
 ```
 frostmark
 ├── public: no_iced, static, stream
-└── internal: _iced_backend, _legacy_comrak, _rcdom_compat, _html_preprocess
+└── internal: _iced_backend, _rcdom_compat, _html_preprocess
 ```
 
 **Pros**
@@ -26,7 +26,7 @@ frostmark
 **Cons**
 
 - Cargo `--features` listing shows internal `_`-prefixed flags.
-- Default features still pull comrak until Task 8.1 completes.
+- Default features use pulldown-only parsing (Task 8.1 complete).
 
 ### B. Split: `frostmark-core` + `frostmark-iced`
 
@@ -45,8 +45,7 @@ frostmark        → thin facade depending on both (optional)
 
 - Breaking publish/co-versioning overhead (two crates, two READMEs, cross-crate doc links).
 - Nova and frostmark examples must update dependency paths.
-- Migration internals (`_legacy_comrak`) still need a home — likely core until removal anyway.
-- No functional gain once 8.1/8.2 cleanup removes comrak/RcDom from defaults.
+- No functional gain from splitting until optional deps grow further.
 
 ### C. Split: `frostmark` + `frostmark-iced` only
 
@@ -65,7 +64,7 @@ Core stays as `frostmark` with headless features; iced moves to `frostmark-iced`
 
 **Do not split before 0.3 release.**
 
-1. Complete Task 8.1 (remove `_legacy_comrak`) after the stabilization window.
+1. Task 8.1 complete — comrak removed; revisit split only if compile times or API surface force it.
 2. Document the three-feature contract in README, `docs/API.md`, and crate-level docs (Task 8.3).
 3. Re-evaluate split if post-release feedback shows consumers enabling `_`-prefixed features despite documentation.
 

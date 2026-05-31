@@ -39,8 +39,6 @@ pub enum BlockContent {
     Unsupported {
         reason: crate::core::error::UnsupportedReason,
     },
-    #[cfg(feature = "_legacy_comrak")]
-    LegacyHtml(String),
 }
 
 /// One renderable document block.

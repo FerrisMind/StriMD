@@ -9,7 +9,6 @@ fn test_md_preview_through_document() {
     let source = include_str!("../examples/assets/TEST.md");
     let doc = Document::parse(source, ParseProfile::GitHubPreview).expect("parse");
     assert_eq!(doc.parse_backend(), ParseBackend::Pulldown);
-    assert!(!doc.legacy_fallback_used());
 
     let kinds: Vec<_> = doc.blocks().iter().map(|b| b.kind).collect();
     assert!(kinds.contains(&BlockKind::Heading));

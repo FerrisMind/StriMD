@@ -84,9 +84,9 @@ fn iced_full_example() {
 
 </details>
 
-**Note:** Legacy Markdown-via-comrak support uses the `_legacy_comrak` feature (enabled
-by default during migration). Headless consumers should disable default features and
-enable only the supported public features they need.
+**Note:** Markdown parsing uses **pulldown-cmark** only (comrak removed in 0.3).
+Headless consumers should disable default features and enable only the supported
+public features they need.
 
 ## How does this work
 
@@ -129,13 +129,12 @@ See [docs/API.md](docs/API.md) for the public API reference, [docs/MIGRATION.md]
 These exist for migration and may change without notice:
 
 - `_iced_backend` — default iced renderer (on by default)
-- `_legacy_comrak` — comrak fallback until pulldown parity
 - `_html_preprocess` — optional `lol_html` rewrite layer
 - `_rcdom_compat` — `markup5ever_rcdom` bridge for migration parity tests only (not used by default iced backend)
 
 ## Iced passthrough features
 
-- `markdown` — alias for `_legacy_comrak`
+- `markdown` — alias for `static` (pulldown HTML export)
 - `iced-wgpu`, `iced-tiny-skia`, `iced-tokio`, `iced-windowing` — forwarded to `iced`
 
 ## TODO

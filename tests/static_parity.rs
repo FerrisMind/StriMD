@@ -50,14 +50,13 @@ fn raw_details_routes_to_html_fragment() {
     );
 }
 
-#[cfg(feature = "_legacy_comrak")]
 #[test]
-fn wikilink_fixture_reports_shadow_mismatch_without_fallback() {
+fn gfm_wikilink_exports_via_pulldown() {
     let doc = Document::parse(&fixture("gfm_wikilink.md"), ParseProfile::GitHubPreview).expect("parse");
-    assert!(doc.shadow_mismatch());
-    assert!(!doc.legacy_fallback_used());
-    assert_eq!(
-        doc.parse_backend(),
-        frostmark::ParseBackend::Pulldown
+    assert_eq!(doc.parse_backend(), frostmark::ParseBackend::Pulldown);
+    let html = doc.to_html().expect("html");
+    assert!(
+        html.contains("WikiPage") || html.contains("wiki"),
+        "wikilink html: {html}"
     );
 }

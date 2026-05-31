@@ -1,6 +1,4 @@
 use super::{MarkState, UpdateMsg};
-#[cfg(feature = "_legacy_comrak")]
-use crate::parse::comrak_migration as comrak;
 
 /// A fenced or indented code block extracted from markdown source.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,7 +72,7 @@ impl MarkDocument {
         Self::parse_with_rich_preprocessor(source, |markdown| markdown.to_string())
     }
 
-    /// Parses markdown, running `preprocess_rich` on prose segments before comrak conversion.
+    /// Parses markdown, running `preprocess_rich` on prose segments before pulldown conversion.
     #[must_use]
     pub fn parse_with_rich_preprocessor(
         source: &str,
@@ -190,8 +188,7 @@ fn split_markdown_segments(
 
 fn rich_segment(markdown: &str, preprocess_rich: &impl Fn(&str) -> String) -> MarkSegment {
     let processed = preprocess_rich(markdown);
-    let html = comrak::markdown_to_html(&processed);
-    MarkSegment::Rich(MarkState::with_html(&html))
+    MarkSegment::Rich(MarkState::with_html_and_markdown(&processed))
 }
 
 fn normalize_code_language(language: Option<&str>) -> Option<String> {

@@ -17,7 +17,7 @@
 //! | `static` | Full-document parse and HTML export |
 //! | `stream` | Incremental LLM streaming via vendored mdstream |
 //!
-//! Implementation-detail features (`_iced_backend`, `_legacy_comrak`, `_html_preprocess`,
+//! Implementation-detail features (`_iced_backend`, `_html_preprocess`,
 //! `_rcdom_compat`) exist for migration only and are **not** part of the stable public contract.
 //!
 //! See [`docs/API.md`](https://github.com/Mrmayman/frostmark/blob/main/docs/API.md) for the full
@@ -47,11 +47,12 @@ pub use core::{
     BlockContent, BlockId, BlockKind, BlockStatus, CompiledMarkdown, Document, HtmlFragmentError,
     ParseError, RenderBlock, RenderError, UnsupportedReason,
 };
-#[cfg(feature = "_legacy_comrak")]
-pub use core::LegacyFallbackReport;
-pub use options::{LegacyFallbackPolicy, ParseOptions, RawHtmlPolicy};
+pub use options::{ParseOptions, RawHtmlPolicy};
 pub use parse::{ParseBackend, ParseDiagnostics};
 pub use profile::ParseProfile;
+
+#[cfg(feature = "static")]
+pub use core::markdown_to_html;
 
 #[cfg(feature = "stream")]
 pub use core::{PendingPolicy, StreamDocument, StreamOptions, StreamPatch, StreamUpdate};
@@ -59,7 +60,7 @@ pub use core::{PendingPolicy, StreamDocument, StreamOptions, StreamPatch, Stream
 #[cfg(feature = "static")]
 pub use html::fragment::{HtmlAttr, HtmlFragment, HtmlNode, HtmlTag, NodeId};
 
-// Legacy iced API (default builds)
+// Iced API (default builds)
 #[cfg(all(feature = "_iced_backend", not(feature = "no_iced")))]
 pub use backends::iced::{
     ImageInfo, MarkState, MarkWidget, RubyMode, Style, UpdateMsg,
@@ -67,7 +68,7 @@ pub use backends::iced::{
 
 #[cfg(all(
     feature = "_iced_backend",
-    feature = "_legacy_comrak",
+    feature = "static",
     not(feature = "no_iced")
 ))]
-pub use backends::iced::{CodeBlock, MarkDocument, MarkSegment, markdown_to_html};
+pub use backends::iced::{CodeBlock, MarkDocument, MarkSegment};

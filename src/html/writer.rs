@@ -33,8 +33,6 @@ pub fn blocks_to_html(blocks: &[RenderBlock]) -> Result<String, RenderError> {
                     html_escape_text(&format!("{reason:?}"))
                 ));
             }
-            #[cfg(feature = "_legacy_comrak")]
-            BlockContent::LegacyHtml(html) => out.push_str(html),
         }
     }
     Ok(out)

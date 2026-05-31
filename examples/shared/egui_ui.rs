@@ -151,7 +151,7 @@ pub fn count_append_committed(updates: &[StreamUpdate]) -> usize {
 pub fn render_document_summary(ui: &mut Ui, doc: &Document, html: &str) {
     ui.label(format!("blocks: {}", doc.blocks().len()));
     ui.label(format!("backend: {:?}", doc.parse_backend()));
-    ui.label(format!("legacy fallback: {}", doc.legacy_fallback_used()));
+    ui.label(format!("diagnostics: {}", doc.diagnostics()));
     render_table_blocks(ui, doc.blocks());
     ui.separator();
     ui.heading("HTML export");

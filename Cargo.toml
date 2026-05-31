@@ -25,7 +25,6 @@ iced = { version = "0.14", optional = true, default-features = false, features =
 ] }
 html5ever = { version = "0.36", optional = true }
 markup5ever_rcdom = { version = "0.36", optional = true }
-comrak = { version = "0.49", default-features = false, optional = true }
 lol_html = { version = "2", optional = true }
 mdstream = { path = "../mdstream/mdstream", optional = true }
 
@@ -42,7 +41,7 @@ eframe = { version = "0.29", default-features = false, features = [
 egui = "0.29"
 
 [features]
-default = ["_iced_backend", "_legacy_comrak"]
+default = ["_iced_backend"]
 
 # Supported public features (stable contract)
 no_iced = []
@@ -57,12 +56,11 @@ _iced_backend = [
     "iced/x11",
     "iced/wayland",
 ]
-_legacy_comrak = ["dep:comrak", "dep:markup5ever_rcdom"]
 _html_preprocess = ["dep:lol_html"]
 _rcdom_compat = ["dep:markup5ever_rcdom"]
 
-# Backward-compatible aliases
-markdown = ["_legacy_comrak"]
+# Backward-compatible aliases (pulldown-only; comrak removed in 0.3)
+markdown = ["static"]
 iced-wgpu = ["iced/wgpu"]
 iced-tiny-skia = ["iced/tiny-skia"]
 iced-tokio = ["iced/tokio"]

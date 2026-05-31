@@ -5,7 +5,6 @@ use crate::profile::ParseProfile;
 pub struct ParseOptions {
     pub pulldown: pulldown_cmark::Options,
     pub raw_html: RawHtmlPolicy,
-    pub legacy_fallback: LegacyFallbackPolicy,
 }
 
 impl Default for ParseOptions {
@@ -21,12 +20,10 @@ impl ParseOptions {
             ParseProfile::GitHubPreview | ParseProfile::ChatStream => Self {
                 pulldown: profile.pulldown_options(),
                 raw_html: RawHtmlPolicy::Preserve,
-                legacy_fallback: LegacyFallbackPolicy::ShadowCompare,
             },
             ParseProfile::StrictCommonMark => Self {
                 pulldown: pulldown_cmark::Options::empty(),
                 raw_html: RawHtmlPolicy::Escape,
-                legacy_fallback: LegacyFallbackPolicy::Disabled,
             },
         }
     }
@@ -38,12 +35,4 @@ pub enum RawHtmlPolicy {
     Preserve,
     Escape,
     StripUnsupported,
-}
-
-/// Whether comrak may shadow-compare or temporarily serve legacy output.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LegacyFallbackPolicy {
-    Disabled,
-    ShadowCompare,
-    PreferLegacyUntilParity,
 }

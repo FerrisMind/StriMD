@@ -104,8 +104,6 @@ impl BlockRenderCache {
                 CachedBlock::Fragment(pending_markdown_to_fragment(&block.source))
             }
             BlockContent::Unsupported { .. } => CachedBlock::Empty,
-            #[cfg(feature = "_legacy_comrak")]
-            BlockContent::LegacyHtml(html) => CachedBlock::Fragment(HtmlFragment::from_html(html)),
         }
     }
 

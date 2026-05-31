@@ -10,11 +10,10 @@ pub use block::{
     BlockContent, BlockKind, BlockStatus, CompiledMarkdown, RenderBlock,
 };
 pub use document::Document;
+#[cfg(feature = "static")]
+pub use document::markdown_to_html;
 pub use error::{HtmlFragmentError, ParseError, RenderError, UnsupportedReason};
 pub use ids::BlockId;
-
-#[cfg(feature = "_legacy_comrak")]
-pub use crate::parse::legacy_fallback::LegacyFallbackReport;
 
 pub use crate::parse::{ParseBackend, ParseDiagnostics};
 

@@ -22,10 +22,6 @@ pub fn check_static_table_path() -> CheckResult {
             doc.parse_backend()
         ));
     }
-    if doc.legacy_fallback_used() {
-        return Err("unexpected comrak fallback for static table".into());
-    }
-
     let table_blocks: Vec<_> = doc
         .blocks()
         .iter()

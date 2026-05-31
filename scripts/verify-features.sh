@@ -23,8 +23,8 @@ cargo check --no-default-features --features no_iced,stream
 echo "== headless static + stream =="
 cargo check --no-default-features --features no_iced,static,stream
 
-echo "== legacy comrak migration =="
-cargo check --features static,stream,_legacy_comrak
+echo "== static + stream (pulldown) =="
+cargo check --features static,stream
 
 echo "== unit + integration tests (default) =="
 cargo test

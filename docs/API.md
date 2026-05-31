@@ -2,7 +2,7 @@
 
 This document describes the **stable public contract** for frostmark integrators. Only three user-facing Cargo features exist: `no_iced`, `static`, and `stream`.
 
-Implementation features (`_iced_backend`, `_legacy_comrak`, `_html_preprocess`, `_rcdom_compat`) are migration internals and may change without notice.
+Implementation features (`_iced_backend`, `_html_preprocess`, `_rcdom_compat`) are migration internals and may change without notice.
 
 ## Cargo features
 
@@ -18,7 +18,7 @@ Typical headless dependency:
 frostmark = { version = "0.3", default-features = false, features = ["no_iced", "static", "stream"] }
 ```
 
-Default GUI dependency (iced + migration fallbacks):
+Default GUI dependency (iced + pulldown):
 
 ```toml
 frostmark = "0.3"
@@ -38,7 +38,7 @@ All backends share the same block model:
 | `BlockContent` | Payload: Markdown events cache or `HtmlFragment` |
 | `BlockStatus` | Committed vs pending (streaming) |
 | `ParseProfile` | Parser preset (`GitHubPreview`, `ChatStream`, …) |
-| `ParseOptions` | Fine-grained parse policy (raw HTML, legacy fallback) |
+| `ParseOptions` | Fine-grained parse policy (raw HTML, pulldown options) |
 
 Pulldown event internals are **not** exposed in the public API.
 
@@ -60,19 +60,15 @@ let html = doc.to_html()?;
 
 `ParseProfile::GitHubPreview` enables GFM tables, task lists, strikethrough, footnotes, alerts, math, and wikilinks (pulldown-cmark 0.13).
 
-### Diagnostics (migration builds)
+### Diagnostics
 
-When `_legacy_comrak` is enabled (default today), `Document::diagnostics()` reports shadow-compare results:
+`Document::diagnostics()` reports the active parser backend (always `ParseBackend::Pulldown`).
 
 ```rust
 let doc = Document::parse(source, ParseProfile::GitHubPreview)?;
-if doc.shadow_mismatch() {
-    // pulldown HTML ≠ comrak — see docs/LEGACY_REMOVAL_GATE.md
-}
-assert!(!doc.legacy_fallback_used()); // default policy keeps pulldown output
+assert_eq!(doc.parse_backend(), frostmark::ParseBackend::Pulldown);
+assert_eq!(doc.diagnostics().to_string(), "backend=pulldown");
 ```
-
-Known accepted delta: `tests/fixtures/gfm_wikilink.md` — pulldown wikilink HTML differs from comrak; pulldown is canonical.
 
 ## LLM streaming
 

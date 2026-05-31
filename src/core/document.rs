@@ -2,7 +2,6 @@ use crate::core::block::RenderBlock;
 use crate::core::error::ParseError;
 use crate::options::ParseOptions;
 use crate::parse::diagnostics::ParseDiagnostics;
-use crate::parse::legacy_fallback::{self, LegacyFallbackReport};
 use crate::parse::pulldown;
 use crate::profile::ParseProfile;
 
@@ -20,19 +19,17 @@ impl Document {
         Self::parse_with_options(source, profile, &ParseOptions::for_profile(profile))
     }
 
-    /// Parse with explicit options and return legacy migration diagnostics.
+    /// Parse with explicit options.
     pub fn parse_with_options(
         source: &str,
         profile: ParseProfile,
         options: &ParseOptions,
     ) -> Result<Self, ParseError> {
         let blocks = pulldown::parse_blocks(source, profile, options)?;
-        let (blocks, fallback_report) =
-            legacy_fallback::apply_legacy_policy(source, blocks, options.legacy_fallback)?;
         Ok(Self {
             blocks,
             profile,
-            diagnostics: ParseDiagnostics::from_fallback_report(fallback_report),
+            diagnostics: ParseDiagnostics::pulldown(),
         })
     }
 
@@ -48,7 +45,7 @@ impl Document {
         self.profile
     }
 
-    /// Parse diagnostics: active backend and migration flags.
+    /// Parse diagnostics: active backend.
     #[must_use]
     pub fn diagnostics(&self) -> ParseDiagnostics {
         self.diagnostics
@@ -60,29 +57,19 @@ impl Document {
         self.diagnostics.backend
     }
 
-    /// Whether comrak fallback was used during parse (migration builds only).
-    #[must_use]
-    pub fn legacy_fallback_used(&self) -> bool {
-        self.diagnostics.legacy_fallback_used()
-    }
-
-    /// Whether pulldown and comrak HTML differed during shadow compare.
-    #[must_use]
-    pub fn shadow_mismatch(&self) -> bool {
-        self.diagnostics.shadow_mismatch()
-    }
-
-    /// Full legacy migration report from the last parse.
-    #[must_use]
-    pub fn fallback_report(&self) -> LegacyFallbackReport {
-        self.diagnostics.fallback
-    }
-
     /// Export the document as HTML (requires `static` feature).
     #[cfg(feature = "static")]
     pub fn to_html(&self) -> Result<String, crate::core::error::RenderError> {
         crate::html::writer::blocks_to_html(&self.blocks)
     }
+}
+
+#[cfg(feature = "static")]
+/// Convert Markdown to HTML using the pulldown static export path.
+pub fn markdown_to_html(input: &str) -> Result<String, crate::core::error::RenderError> {
+    let doc = Document::parse(input, ParseProfile::GitHubPreview)
+        .map_err(|e| crate::core::error::RenderError::new(e.to_string()))?;
+    doc.to_html()
 }
 
 #[cfg(test)]
@@ -147,10 +134,10 @@ App {
     }
 
     #[test]
-    fn diagnostics_expose_pulldown_backend_by_default() {
+    fn diagnostics_expose_pulldown_backend() {
         let doc = Document::parse("# Hi", ParseProfile::GitHubPreview).expect("parse");
         assert_eq!(doc.parse_backend(), crate::parse::ParseBackend::Pulldown);
-        assert!(!doc.legacy_fallback_used());
+        assert_eq!(doc.diagnostics().to_string(), "backend=pulldown");
     }
 
     #[cfg(feature = "static")]
@@ -174,25 +161,16 @@ App {
         assert!(!html.contains("<script"));
     }
 
-    #[cfg(all(feature = "_legacy_comrak", feature = "static"))]
+    #[cfg(feature = "static")]
     #[test]
-    fn parse_reports_shadow_mismatch_without_using_fallback() {
-        let source = "See [[WikiPage]] for details.\n";
+    fn gfm_wikilink_exports_via_pulldown() {
+        let source = include_str!("../../tests/fixtures/gfm_wikilink.md");
         let doc = Document::parse(source, ParseProfile::GitHubPreview).expect("parse");
-        assert!(doc.shadow_mismatch());
-        assert!(!doc.legacy_fallback_used());
-    }
-
-    #[cfg(feature = "_legacy_comrak")]
-    #[test]
-    fn prefer_legacy_policy_can_be_selected_via_options() {
-        use crate::options::LegacyFallbackPolicy;
-
-        let source = "See [[WikiPage]] for details.\n";
-        let mut options = ParseOptions::for_profile(ParseProfile::GitHubPreview);
-        options.legacy_fallback = LegacyFallbackPolicy::PreferLegacyUntilParity;
-        let doc = Document::parse_with_options(source, ParseProfile::GitHubPreview, &options)
-            .expect("parse");
-        assert!(doc.legacy_fallback_used());
+        assert_eq!(doc.parse_backend(), crate::parse::ParseBackend::Pulldown);
+        let html = doc.to_html().expect("html");
+        assert!(
+            html.contains("WikiPage") || html.contains("wiki"),
+            "wikilink html: {html}"
+        );
     }
 }

@@ -29,12 +29,11 @@ frostmark = { version = "0.3", default-features = false, features = ["no_iced", 
 | `static` | Full-document preview, `Document::to_html()` |
 | `stream` | LLM token streaming via `StreamDocument` |
 
-Default builds (`default-features = true`) still enable iced + migration fallbacks.
+Default builds (`default-features = true`) enable the iced backend with pulldown parsing.
 
 ## Implementation-only features (unsupported)
 
 - `_iced_backend` — iced renderer (on by default)
-- `_legacy_comrak` — comrak shadow/fallback until pulldown parity
 - `_rcdom_compat` — RcDom bridge for parity tests only (production iced path uses TreeSink → `HtmlFragment`)
 - `_html_preprocess` — optional `lol_html` rewrite layer
 
@@ -73,13 +72,7 @@ Use `StreamOptions::chat()` — it sets footnote/reference invalidation expected
 
 ## Legacy removal gate
 
-Do **not** remove `_legacy_comrak` or production `markup5ever_rcdom` until [LEGACY_REMOVAL_GATE.md](LEGACY_REMOVAL_GATE.md) is fully green.
-
-Current known accepted delta:
-
-| Fixture | Delta |
-|---------|--------|
-| `tests/fixtures/gfm_wikilink.md` | pulldown wikilink HTML ≠ comrak (shadow compare only) |
+Comrak (`_legacy_comrak`) was removed in Task 8.1 after parity tests passed — see [LEGACY_REMOVAL_GATE.md](LEGACY_REMOVAL_GATE.md). Production `markup5ever_rcdom` is already out of the iced path; `_rcdom_compat` remains for parity tests only.
 
 ## Verification
 
@@ -97,7 +90,7 @@ Phases 0–7 core implementation and parity fixtures are complete in `nova_refs/
 
 Remaining frostmark crate work:
 
-- **8.1** — remove comrak after 2-week stabilization window (wikilink policy documented; pulldown canonical)
+- **8.1** — done: comrak removed; pulldown-only parsing
 - **8.2** — done: production iced path uses `HtmlFragment` without RcDom
 - **8.3** — done: README, `docs/API.md`, headless/migration guides
 - **8.4** — done: see [CRATE_SPLIT_SPIKE.md](CRATE_SPLIT_SPIKE.md) (recommend single crate for 0.3)
