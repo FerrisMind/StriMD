@@ -2,6 +2,8 @@
 
 **HTML + Markdown viewer for [iced](https://iced.rs/) — static, streaming, and headless**
 
+Hard fork of [frostmark](https://github.com/Mrmayman/frostmark). Same iced widget surface where applicable; new headless APIs and a different Markdown/HTML stack — see [Provenance](#provenance--acknowledgments).
+
 ![(Demo showing HTML and Markdown together)](https://github.com/Mrmayman/frostmark/raw/main/examples/assets/live_edit.png)
 
 ---
@@ -150,6 +152,19 @@ These exist for migration and may change without notice:
 | 0.2 | 0.13 | 1.82 |
 | 0.1 | 0.13 | 1.82 |
 
+## Provenance & acknowledgments
+
+**StriMD** (`strimd`) is a **hard fork** of [frostmark](https://github.com/Mrmayman/frostmark) by FerrisMind — not a continuation of the upstream 0.3.x release line.
+
+| | frostmark (upstream) | StriMD (this repo) |
+|---|---|---|
+| Crate name | `frostmark` | `strimd` |
+| Markdown parser | comrak | pulldown-cmark |
+| Headless / stream | — | `Document`, `StreamDocument`, mdstream |
+| Last shared commit | [`fbe35a6`](https://github.com/Mrmayman/frostmark/commit/fbe35a6) (0.3.1 line) | 13+ commits of stack migration |
+
+Upstream copyright and attribution are in [NOTICE](NOTICE). Stack migration: [changelogs/1.0.0.md](changelogs/1.0.0.md).
+
 # Contributing
 
 This library is experimental.
@@ -158,11 +173,17 @@ contributions are appreciated!
 
 ## Contributors
 
-- **[Mrmayman](https://github.com/Mrmayman) - Creator**
-- [mariinkys](https://github.com/mariinkys) - Tables, other changes
-- [Drodofsky](https://github.com/Drodofsky) - Ruby text support
-- [ruguysgoingtrickortreating](https://github.com/ruguysgoingtrickortreating) - Updated to iced 0.14
+### frostmark (upstream)
+
+- **[Mrmayman](https://github.com/Mrmayman)** — creator
+- [mariinkys](https://github.com/mariinkys) — tables and related work
+- [Drodofsky](https://github.com/Drodofsky) — ruby text support
+- [ruguysgoingtrickortreating](https://github.com/ruguysgoingtrickortreating) — iced 0.14 update
+
+### StriMD (FerrisMind fork)
+
+- **[FerrisMind](https://github.com/FerrisMind)** — stack migration (pulldown, mdstream, headless API), maintenance
 
 ---
 
-**License**: Dual licensed under MIT and Apache 2.0.
+**License**: [Apache License 2.0](LICENSE). Upstream frostmark attribution and MIT notice: [NOTICE](NOTICE).

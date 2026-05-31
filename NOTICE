@@ -1,0 +1,54 @@
+StriMD (strimd)
+Copyright 2026 FerrisMind and contributors
+
+Licensed under the Apache License, Version 2.0.
+The full license text is in the LICENSE file at the repository root.
+
+================================================================================
+Third-party: frostmark (incorporated portions)
+================================================================================
+
+This product includes code from frostmark
+(https://github.com/Mrmayman/frostmark).
+
+Last shared upstream revision: fbe35a6
+(https://github.com/Mrmayman/frostmark/commit/fbe35a6dfe14ae59850332bf4ce7c065c48f042a)
+
+Upstream license files at that revision:
+  MIT:         https://github.com/Mrmayman/frostmark/blob/fbe35a6/LICENSE-MIT
+  Apache-2.0:  https://github.com/Mrmayman/frostmark/blob/fbe35a6/LICENSE-APACHE
+
+Upstream was dual-licensed (MIT OR Apache-2.0). StriMD is distributed under
+Apache-2.0 only, which upstream permits as one licensing option. The Apache-2.0
+text for this distribution is in LICENSE (identical to upstream Apache terms).
+
+The MIT license text below is included for incorporated frostmark portions,
+as required by the upstream MIT license notice:
+
+--- frostmark MIT License (upstream) ---
+
+MIT License
+
+Copyright (c) 2025 Mrmayman
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--- end frostmark MIT License ---
+
+Contributor credits for frostmark are listed in README.md (Provenance section).

@@ -2,9 +2,12 @@
 name = "strimd"
 version = "1.0.0-dev"
 edition = "2024"
-authors = ["FerrisMind <ferrismindrust@outlook.com>"]
+authors = [
+    "Mrmayman <navneetkrishna22@gmail.com>",
+    "FerrisMind <ferrismindrust@outlook.com>",
+]
 description = "StriMD — HTML/Markdown renderer for iced with headless static and streaming modes"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 repository = "https://github.com/FerrisMind/strimd"
 documentation = "https://docs.rs/strimd"
 readme = "README.md"
