@@ -12,7 +12,7 @@ with which you can test the renderer.
 ![GPL3 License](https://img.shields.io/github/license/Mrmayman/quantumlauncher)
 ![Downloads](https://img.shields.io/github/downloads/Mrmayman/quantumlauncher/total)
 ![Discord Online](https://img.shields.io/discord/1280474064540012619?label=&labelColor=6A7EC2&logo=discord&logoColor=ffffff&color=7389D8)
-[![Made with iced](https://iced.rs/badge.svg)](https://github.com/iced-rs/iced)
+[![Made with iced](https://img.shields.io/badge/made%20with-iced-4f46e5)](https://github.com/iced-rs/iced)
 
 A minimalistic Minecraft launcher for Windows, macOS and Linux.
 

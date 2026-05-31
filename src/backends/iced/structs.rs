@@ -49,6 +49,15 @@ impl From<ChildAlignment> for iced::Alignment {
     }
 }
 
+impl ChildAlignment {
+    pub(crate) fn to_horizontal(self) -> iced::alignment::Horizontal {
+        match self {
+            ChildAlignment::Center => iced::alignment::Horizontal::Center,
+            ChildAlignment::Right => iced::alignment::Horizontal::Right,
+        }
+    }
+}
+
 bitflags! {
     #[derive(Debug, Clone, Copy, Default)]
     pub struct ChildDataFlags: u16 {
@@ -421,7 +430,9 @@ where
     // btw it supports clone so it's fine if we dont ref
     pub fn render(self) -> Element<'a, M, T> {
         match self {
-            RenderedSpan::Spans(spans) => widget::rich_text(spans).on_link_click(|n| n).into(),
+            RenderedSpan::Spans(spans) => widget::rich_text(spans)
+                .on_link_click(|url| url)
+                .into(),
             RenderedSpan::Elem(element, _) => element,
             RenderedSpan::None => widget::Column::new().into(),
         }

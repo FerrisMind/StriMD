@@ -93,14 +93,10 @@ impl BlockRenderCache {
         self.statuses.clear();
         self.indices.clear();
         self.alignment_context = None;
-        let mut code_blocks = 0usize;
-        let mut centered = 0usize;
         for block in blocks {
-            if matches!(block.content, BlockContent::Code { .. }) {
-                code_blocks += 1;
-            }
             if fragment_is_complete_alignment_wrapper(block) {
-                self.push_block(block, None);
+                let align = block_opens_alignment_wrapper(block);
+                self.push_block(block, align);
                 self.alignment_context = None;
                 continue;
             }
@@ -112,32 +108,8 @@ impl BlockRenderCache {
                 self.alignment_context = None;
                 continue;
             }
-            if self.alignment_context.is_some() {
-                centered += 1;
-            }
             self.push_block(block, self.alignment_context);
         }
-        // #region agent log
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("/home/mod479711/Downloads/.cursor/debug-9a2b4f.log")
-        {
-            use std::io::Write;
-            let ts = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0);
-            let _ = writeln!(
-                f,
-                r#"{{"sessionId":"9a2b4f","hypothesisId":"H1","location":"block_cache.rs:rebuild","message":"block cache rebuilt","data":{{"entries":{},"code_blocks":{},"centered_entries":{}}},"timestamp":{}}}"#,
-                self.entries.len(),
-                code_blocks,
-                centered,
-                ts
-            );
-        }
-        // #endregion
     }
 
     #[allow(dead_code)]
@@ -497,22 +469,6 @@ mod tests {
         assert!(cache_entry_contains_tag(&rebuilt, 2, "a"));
     }
 
-    fn fragment_root_tags(fragment: &HtmlFragment) -> Vec<String> {
-        fragment
-            .roots()
-            .iter()
-            .filter_map(|&id| match fragment.node(id) {
-                Some(crate::html::fragment::HtmlNode::Element { tag, .. }) => {
-                    Some(tag.as_str().to_string())
-                }
-                Some(crate::html::fragment::HtmlNode::Text(t)) => {
-                    Some(format!("text:{}", &t[..t.len().min(40)]))
-                }
-                _ => None,
-            })
-            .collect()
-    }
-
     fn fragment_has_tag(fragment: &HtmlFragment, expected: &str) -> bool {
         fn walk(fragment: &HtmlFragment, id: crate::html::fragment::NodeId, expected: &str) -> bool {
             match fragment.node(id) {
@@ -529,22 +485,6 @@ mod tests {
             .roots()
             .iter()
             .any(|&r| walk(fragment, r, expected))
-    }
-
-    fn center_ancestor_contains_h1(fragment: &HtmlFragment) -> bool {
-        fn walk(fragment: &HtmlFragment, id: crate::html::fragment::NodeId, in_center: bool) -> bool {
-            match fragment.node(id) {
-                Some(crate::html::fragment::HtmlNode::Element { tag, children, .. }) => {
-                    let in_center = in_center || tag.as_str() == "center";
-                    if in_center && tag.as_str() == "h1" {
-                        return true;
-                    }
-                    children.iter().any(|&c| walk(fragment, c, in_center))
-                }
-                _ => false,
-            }
-        }
-        fragment.roots().iter().any(|&r| walk(fragment, r, false))
     }
 
     #[test]
@@ -611,7 +551,6 @@ App { state: 1 }
         for (i, block) in doc.blocks().iter().enumerate() {
             kinds.push(format!("{:?}", block.kind));
             if let Some(CachedBlock::Fragment(fragment)) = cache.entry(i) {
-                let _roots = fragment_root_tags(fragment);
                 has_h1 |= fragment_has_tag(fragment, "h1");
                 has_h2 |= fragment_has_tag(fragment, "h2");
                 has_hr |= fragment_has_tag(fragment, "hr");
@@ -733,6 +672,66 @@ fn demo() {}
     }
 
     #[test]
+    fn platforms_list_item_html_structure() {
+        use crate::core::document::Document;
+        use crate::profile::ParseProfile;
+        let md = r"## Platforms
+
+(note: WIP)
+
+- [x] Windows x86_64
+- [x] Linux x86_64
+";
+        let html = Document::parse(md, ParseProfile::GitHubPreview)
+            .unwrap()
+            .to_html()
+            .unwrap();
+        let inputs = html.matches("<input").count();
+        eprintln!("platforms html ({inputs} inputs):\n{html}");
+        assert!(html.contains("checkbox"));
+        assert_eq!(inputs, 2, "expected one input per item");
+    }
+
+    #[test]
+    fn ql_platforms_full_file_input_count() {
+        use crate::profile::ParseProfile;
+        use super::markdown_source_to_html;
+        let md = include_str!("../../examples/assets/QL_README.md");
+        let html = markdown_source_to_html(md, ParseProfile::GitHubPreview);
+        let start = html.find("<h2>Platforms</h2>").expect("platforms heading");
+        let after = start + "<h2>Platforms</h2>".len();
+        let end = html[after..]
+            .find("<h2>")
+            .map(|i| after + i)
+            .unwrap_or(html.len());
+        let section = &html[start..end];
+        eprintln!("QL platforms section:\n{section}");
+        let inputs = section.matches("<input").count();
+        let lis = section.matches("<li").count();
+        eprintln!("inputs={inputs} lis={lis}");
+        assert!(inputs >= 10, "expected many platform checkboxes, got {inputs}");
+        assert!(
+            section.contains("<p><input"),
+            "QL platforms use li>p>input; renderer must not duplicate checkbox in body"
+        );
+    }
+
+    #[test]
+    fn ql_loaders_list_item_uses_inline_input_not_wrapped_in_p() {
+        use crate::profile::ParseProfile;
+        use super::markdown_source_to_html;
+        let md = include_str!("../../examples/assets/QL_README.md");
+        let html = markdown_source_to_html(md, ParseProfile::GitHubPreview);
+        let start = html.find("<h3>Loaders</h3>").expect("loaders");
+        let section = &html[start..start + 600];
+        eprintln!("loaders snippet:\n{section}");
+        assert!(
+            section.contains("<li><input") || section.contains("<li>\n<input"),
+            "loaders items often omit p wrapper"
+        );
+    }
+
+    #[test]
     fn ql_and_test_have_task_list_blocks() {
         use crate::core::document::Document;
         use crate::core::block::BlockKind;
@@ -745,6 +744,117 @@ fn demo() {}
         let ql_lists = ql_doc.blocks().iter().filter(|b| b.kind == BlockKind::List).count();
         assert!(test_lists >= 1, "TEST.md should have list blocks, got {test_lists}");
         assert!(ql_lists >= 5, "QL_README should have many list blocks, got {ql_lists}");
+    }
+
+    #[test]
+    fn ql_coalesced_center_shield_p_has_four_direct_children() {
+        use crate::core::document::Document;
+        use crate::html::fragment::{HtmlFragment, HtmlNode};
+        use crate::profile::ParseProfile;
+        let ql = include_str!("../../examples/assets/QL_README.md");
+        let doc = Document::parse(ql, ParseProfile::GitHubPreview).unwrap();
+        let cache = BlockRenderCache::from_document(&doc);
+        let mut found = 0usize;
+        for i in 0..cache.len() {
+            let Some(CachedBlock::Fragment(fragment)) = cache.entry(i) else {
+                continue;
+            };
+            fn walk(f: &HtmlFragment, id: crate::html::fragment::NodeId, found: &mut usize) {
+                let Some(HtmlNode::Element { tag, children, .. }) = f.node(id) else {
+                    return;
+                };
+                if tag.as_str() == "p" {
+                    let n = children
+                        .iter()
+                        .filter(|&&c| {
+                            matches!(
+                                f.node(c),
+                                Some(HtmlNode::Element { tag, .. })
+                                    if tag.as_str() == "img" || tag.as_str() == "a"
+                            )
+                        })
+                        .count();
+                    if n >= 4 {
+                        *found = n;
+                    }
+                }
+                for &c in children {
+                    walk(f, c, found);
+                }
+            }
+            for &root in fragment.roots() {
+                walk(fragment, root, &mut found);
+            }
+        }
+        eprintln!("coalesced cache shield-p direct children: {found}");
+        assert!(
+            found >= 4,
+            "Document cache should preserve 4 badges in one <p>, got {found}"
+        );
+    }
+
+    #[test]
+    fn ql_shield_paragraph_dom_child_img_nodes() {
+        use super::markdown_source_to_html;
+        use crate::html::fragment::{HtmlFragment, HtmlNode};
+        use crate::profile::ParseProfile;
+        let html = markdown_source_to_html(
+            include_str!("../../examples/assets/QL_README.md"),
+            ParseProfile::GitHubPreview,
+        );
+        let fragment = HtmlFragment::from_html(&html);
+        let mut shield_p_direct = 0usize;
+        fn walk(f: &HtmlFragment, id: crate::html::fragment::NodeId, count: &mut usize) {
+            let Some(HtmlNode::Element { tag, children, .. }) = f.node(id) else {
+                return;
+            };
+            if tag.as_str() == "p" {
+                let direct = children
+                    .iter()
+                    .filter(|&&c| {
+                        matches!(
+                            f.node(c),
+                            Some(HtmlNode::Element { tag, .. })
+                                if tag.as_str() == "img" || tag.as_str() == "a"
+                        )
+                    })
+                    .count();
+                if direct >= 3 {
+                    *count = direct;
+                }
+            }
+            for &c in children {
+                walk(f, c, count);
+            }
+        }
+        for &root in fragment.roots() {
+            walk(&fragment, root, &mut shield_p_direct);
+        }
+        eprintln!("QL shield-p direct img/a children: {shield_p_direct}");
+        assert!(
+            shield_p_direct >= 4,
+            "expected 4 badge nodes in one <p>, got {shield_p_direct}"
+        );
+    }
+
+    #[test]
+    fn ql_readme_shields_are_single_paragraph_with_four_imgs() {
+        use super::markdown_source_to_html;
+        use crate::profile::ParseProfile;
+        let md = include_str!("../../examples/assets/QL_README.md");
+        let html = markdown_source_to_html(md, ParseProfile::GitHubPreview);
+        let start = html.find("center").expect("center");
+        let end = html[start..].find("</div>").unwrap_or(500) + start;
+        let header = &html[start..end];
+        let p_start = header.find("<p><img").expect("shield paragraph");
+        let p_end = header[p_start..].find("</p>").unwrap() + p_start;
+        let shield_p = &header[p_start..p_end];
+        assert_eq!(
+            shield_p.matches("<img").count(),
+            4,
+            "QL packs all badges into one <p>"
+        );
+        assert!(shield_p.contains("<a href"), "iced badge is a>img");
     }
 
     #[test]
@@ -773,4 +883,43 @@ fn demo() {}
             "To-do must not be inside <center>"
         );
     }
+
+    #[test]
+    fn test_fixture_centered_inline_markdown_stays_single_paragraph_block() {
+        use crate::core::document::Document;
+        use crate::profile::ParseProfile;
+
+        let md = include_str!("../../examples/assets/TEST.md");
+        let doc = Document::parse(md, ParseProfile::GitHubPreview).expect("parse");
+        let cache = BlockRenderCache::from_document(&doc);
+        let matches: Vec<_> = doc
+            .blocks()
+            .iter()
+            .enumerate()
+            .filter(|(_, block)| block.source.contains("Normal"))
+            .map(|(index, block)| {
+                (
+                    index,
+                    block.kind,
+                    cache.entry_alignment(index),
+                    block.source.to_string(),
+                )
+            })
+            .collect();
+
+        eprintln!("blocks containing 'Normal': {matches:#?}");
+        assert!(
+            matches
+                .iter()
+                .any(|(_, kind, align, source)| {
+                    *kind == BlockKind::Paragraph
+                        && *align == Some(BlockAlignment::Center)
+                        && source.contains("**bold**")
+                        && source.contains("`code`")
+                        && source.contains("[link]")
+                }),
+            "expected centered paragraph block for inline markdown inside <center>"
+        );
+    }
+
 }

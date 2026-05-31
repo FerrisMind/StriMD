@@ -130,10 +130,36 @@ impl<'a> DomRef<'a> {
     }
 
     #[must_use]
+    pub(crate) fn is_task_checkbox(node: DomRef<'_>) -> bool {
+        node.tag_name() == Some("input") && node.get_attr("type").as_deref() == Some("checkbox")
+    }
+
+    #[must_use]
+    pub(crate) fn direct_task_checkbox(&self) -> Option<DomRef<'a>> {
+        if let Some(node) = self
+            .children()
+            .into_iter()
+            .find(|child| Self::is_task_checkbox(*child))
+        {
+            return Some(node);
+        }
+        for child in self.children() {
+            if child.tag_name() == Some("p") {
+                if let Some(input) = child
+                    .children()
+                    .into_iter()
+                    .find(|c| Self::is_task_checkbox(*c))
+                {
+                    return Some(input);
+                }
+            }
+        }
+        None
+    }
+
+    #[must_use]
     pub(crate) fn has_task_checkbox_child(&self) -> bool {
-        self.find_descendant(|node| {
-            node.tag_name() == Some("input") && node.get_attr("type").as_deref() == Some("checkbox")
-        })
+        self.direct_task_checkbox().is_some()
     }
 
     #[must_use]
@@ -177,7 +203,7 @@ impl<'a> DomRef<'a> {
         walk(*self, 0, &mut pred)
     }
 
-    /// Paragraph that only contains badge image(s), optionally wrapped in a link.
+    /// Paragraph that only contains badge/shield image(s), optionally wrapped in a link.
     #[must_use]
     pub(crate) fn is_shield_paragraph(&self) -> bool {
         if self.tag_name() != Some("p") {
@@ -188,21 +214,45 @@ impl<'a> DomRef<'a> {
             .into_iter()
             .filter(|c| !c.is_useless())
             .collect();
-        let mut has_img = false;
+        let mut has_badge = false;
         for child in meaningful {
             match child.tag_name() {
-                Some("img") => has_img = true,
+                Some("img") => {
+                    if !Self::is_badge_image(child) {
+                        return false;
+                    }
+                    has_badge = true;
+                }
                 Some("a") => {
-                    let kids: Vec<_> = child.children().into_iter().filter(|c| !c.is_useless()).collect();
+                    let kids: Vec<_> = child
+                        .children()
+                        .into_iter()
+                        .filter(|c| !c.is_useless())
+                        .collect();
                     if kids.len() != 1 || kids[0].tag_name() != Some("img") {
                         return false;
                     }
-                    has_img = true;
+                    if !Self::is_badge_image(kids[0]) {
+                        return false;
+                    }
+                    has_badge = true;
                 }
                 _ => return false,
             }
         }
-        has_img
+        has_badge
+    }
+
+    #[must_use]
+    fn is_badge_image(node: DomRef<'_>) -> bool {
+        let Some(src) = node.get_attr("src") else {
+            return false;
+        };
+        let lower = src.to_ascii_lowercase();
+        lower.contains("img.shields.io")
+            || lower.contains("shields.io/")
+            || lower.contains("badge.svg")
+            || lower.contains("/badge")
     }
 }
 

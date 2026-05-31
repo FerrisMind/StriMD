@@ -90,6 +90,22 @@ cargo run --example stream_chat --no-default-features --features no_iced,stream
 
 ---
 
+# LLM Chat (incremental Markdown)
+
+Mini chatbot to talk to an OpenAI-compatible API and render assistant replies with **live streaming Markdown** (`MarkWidget` + `StreamDocument`).
+
+- Settings: base URL, API key, model
+- **Send** — streams from `POST {base}/chat/completions`
+- **Simulate TEST.md** — offline stream of [`assets/TEST.md`](assets/TEST.md) (no API key)
+
+```sh
+cargo run --example llm_chat --features stream,iced/tokio
+```
+
+Optional: `OPENAI_API_KEY` is pre-filled from the environment. For Ollama, set base URL to `http://localhost:11434/v1` and a local model name.
+
+---
+
 # egui Table Harness (Task 4.5)
 
 Visual + headless verification that GFM tables use the shared StriMD `BlockKind::Table` path (static and streamed). Replaces Nova `chat_table.rs` checks.

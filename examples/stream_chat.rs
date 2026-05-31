@@ -37,13 +37,50 @@ fn main() {
     assert!(append_patches >= 1, "expected append patches during streaming");
 }
 
+/// Simulate token/word deltas without collapsing newlines (required for GFM tables).
 fn chunk_by_words(text: &str, words_per_chunk: usize) -> Vec<String> {
-    let words: Vec<&str> = text.split_whitespace().collect();
-    if words.is_empty() {
-        return vec![text.to_string()];
+    let words_per_chunk = words_per_chunk.max(1);
+    if text.is_empty() {
+        return vec![String::new()];
     }
-    words
-        .chunks(words_per_chunk.max(1))
-        .map(|chunk| format!("{} ", chunk.join(" ")))
-        .collect()
+
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    let mut words_in_chunk = 0usize;
+    let mut i = 0usize;
+
+    while i < text.len() {
+        let rest = &text[i..];
+        if let Some(ws) = rest.chars().next().filter(|c| c.is_whitespace()) {
+            let len = ws.len_utf8()
+                + rest
+                    .chars()
+                    .skip(1)
+                    .take_while(|c| c.is_whitespace())
+                    .map(|c| c.len_utf8())
+                    .sum::<usize>();
+            current.push_str(&text[i..i + len]);
+            i += len;
+            continue;
+        }
+
+        let word_len = rest
+            .chars()
+            .take_while(|c| !c.is_whitespace())
+            .map(|c| c.len_utf8())
+            .sum::<usize>();
+        current.push_str(&text[i..i + word_len]);
+        i += word_len;
+        words_in_chunk += 1;
+
+        if words_in_chunk >= words_per_chunk {
+            chunks.push(std::mem::take(&mut current));
+            words_in_chunk = 0;
+        }
+    }
+
+    if !current.is_empty() || chunks.is_empty() {
+        chunks.push(current);
+    }
+    chunks
 }

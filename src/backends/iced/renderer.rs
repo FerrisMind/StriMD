@@ -11,7 +11,7 @@ use super::{
     state::MarkState,
     style::{DEFAULT_INLINE_CODE_BACKGROUND, DEFAULT_INLINE_CODE_FOREGROUND},
     structs::{
-        ChildAlignment, ChildData, ChildDataFlags, ImageInfo, MarkWidget, RenderedSpan,
+        ChildAlignment, ChildData, ChildDataFlags, Emp, ImageInfo, MarkWidget, RenderedSpan,
         UpdateMsg, UpdateMsgKind,
     },
     widgets::{link, link_text, underline},
@@ -30,6 +30,7 @@ pub trait ValidTheme:
     + widget::rule::Catalog
     + widget::checkbox::Catalog
     + widget::markdown::Catalog
+    + widget::container::Catalog
 {
 }
 impl<T> ValidTheme for T where
@@ -39,6 +40,7 @@ impl<T> ValidTheme for T where
         + widget::rule::Catalog
         + widget::checkbox::Catalog
         + widget::markdown::Catalog
+        + widget::container::Catalog
 {
 }
 
@@ -132,7 +134,14 @@ where
 
             "center" => {
                 data.alignment = Some(ChildAlignment::Center);
-                self.render_children(node, data)
+                let inner = self.render_children(node, data);
+                if inner.is_empty() {
+                    return inner;
+                }
+                widget::column![inner.render()]
+                    .width(Length::Fill)
+                    .spacing(self.paragraph_spacing.unwrap_or(5.0))
+                    .into()
             }
             "pre" => self.render_pre_block(node, data),
 
@@ -148,10 +157,12 @@ where
             "blockquote" => widget::stack!(
                 widget::row![
                     widget::space().width(10),
-                    self.render_children(node, data).render()
-                ],
+                    widget::container(self.render_children(node, data).render()).width(Length::Fill)
+                ]
+                .width(Length::Fill),
                 widget::rule::vertical(2)
             )
+            .width(Length::Fill)
             .into(),
 
             "b" | "strong" => self.render_children(node, data.insert(ChildDataFlags::BOLD)),
@@ -212,15 +223,7 @@ where
             })]),
         };
 
-        if let (true, Some(align)) = (block_element, data.alignment) {
-            let align: iced::Alignment = align.into();
-            widget::column![e.render()]
-                .width(Length::Fill)
-                .align_x(align)
-                .into()
-        } else {
-            e
-        }
+        e
     }
 
     fn draw_details(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
@@ -298,6 +301,14 @@ where
 
         let base_size = text_size_for_data(self.text_size, self.heading_scale, data.heading_weight);
 
+        let is_badge = {
+            let lower = url.to_ascii_lowercase();
+            lower.contains("img.shields.io")
+                || lower.contains("shields.io/")
+                || lower.contains("badge.svg")
+                || lower.contains("/badge")
+        };
+
         let width = node
             .get_attr("width")
             .and_then(|n| n.parse::<f32>().ok())
@@ -307,7 +318,7 @@ where
                     .and_then(|s| css_dimension(s, "width"))
                     .map(|v| em_to_pixels(v, base_size))
             });
-        let height = node
+        let mut height = node
             .get_attr("height")
             .and_then(|n| n.parse::<f32>().ok())
             .or_else(|| {
@@ -316,6 +327,9 @@ where
                     .and_then(|s| css_dimension(s, "height"))
                     .map(|v| em_to_pixels(v, base_size))
             });
+        if is_badge && width.is_none() && height.is_none() {
+            height = Some(20.0);
+        }
 
         if let Some(func) = self.fn_drawing_image.as_deref() {
             return func(ImageInfo {
@@ -347,7 +361,11 @@ where
             } else if let RenderedSpan::Spans(n) = children {
                 RenderedSpan::Spans(
                     n.into_iter()
-                        .map(|n| link_text(n, url.clone(), msg).color(link_col))
+                        .map(|n| {
+                            link_text(n, url.clone(), msg)
+                                .color(link_col)
+                                .underline(true)
+                        })
                         .collect(),
                 )
             } else if let Some(handler) = msg {
@@ -410,24 +428,30 @@ where
                 if !row.is_empty() {
                     let mut old_row = RenderedSpan::None;
                     std::mem::swap(&mut row, &mut old_row);
-                    column.push(old_row);
+                    column.push(Self::apply_alignment_to_block(old_row, data.alignment));
                 }
                 let mut shield_row = widget::Row::new().spacing(6.0);
                 while idx < meaningful.len() && meaningful[idx].is_shield_paragraph() {
-                    let mut child_data = data;
-                    if let Some(base) = original_start {
-                        child_data.li_ordered_number = Some(base + block_index);
-                    }
-                    shield_row =
-                        shield_row.push(self.traverse_dom(meaningful[idx], child_data).render());
+                    shield_row = shield_row.push(self.render_shield_badge(meaningful[idx], data));
                     idx += 1;
                     block_index += 1;
                 }
-                column.push(shield_row.into());
+                let badge_row: Element<'a, M, T> = shield_row.width(Length::Shrink).into();
+                column.push(if let Some(align) = data.alignment {
+                    RenderedSpan::Elem(
+                        Self::stack_align_in_viewport(badge_row, align).into(),
+                        Emp::NonEmpty,
+                    )
+                } else {
+                    RenderedSpan::from(badge_row)
+                });
                 continue;
             }
 
             let mut child_data = data;
+            if data.alignment.is_some() && item.is_block_element() {
+                child_data.alignment = None;
+            }
             if let Some(base) = original_start {
                 child_data.li_ordered_number = Some(base + block_index);
             }
@@ -437,10 +461,10 @@ where
                 if !row.is_empty() {
                     let mut old_row = RenderedSpan::None;
                     std::mem::swap(&mut row, &mut old_row);
-                    column.push(old_row);
+                    column.push(Self::apply_alignment_to_block(old_row, data.alignment));
                 }
 
-                column.push(element);
+                column.push(Self::apply_alignment_to_block(element, data.alignment));
                 block_index += 1;
             } else {
                 row = row + element;
@@ -450,7 +474,7 @@ where
         }
 
         if !row.is_empty() {
-            column.push(row);
+            column.push(Self::apply_alignment_to_block(row, data.alignment));
         }
 
         let len = column.len();
@@ -468,8 +492,49 @@ where
                     .map(RenderedSpan::render),
             )
             .spacing(self.paragraph_spacing.unwrap_or(5.0))
+            .width(Length::Fill)
             .into()
         }
+    }
+
+    /// `<center>` / `align="center"`: text lines use `rich_text` centering; block widgets centered in viewport.
+    fn apply_alignment_to_block(
+        span: RenderedSpan<'a, M, T>,
+        alignment: Option<ChildAlignment>,
+    ) -> RenderedSpan<'a, M, T> {
+        let Some(align) = alignment else {
+            return span;
+        };
+        if span.is_empty() {
+            return span;
+        }
+        match span {
+            RenderedSpan::Spans(spans) => RenderedSpan::Elem(
+                widget::container(widget::rich_text(spans).on_link_click(|url| url))
+                    .width(Length::Fill)
+                    .align_x(align.to_horizontal())
+                    .into(),
+                Emp::NonEmpty,
+            ),
+            other => RenderedSpan::Elem(
+                Self::stack_align_in_viewport(other.render(), align).into(),
+                Emp::NonEmpty,
+            ),
+        }
+    }
+
+    fn stack_align_in_viewport(
+        element: Element<'a, M, T>,
+        align: ChildAlignment,
+    ) -> Element<'a, M, T> {
+        let horizontal = match align {
+            ChildAlignment::Center => iced::alignment::Horizontal::Center,
+            ChildAlignment::Right => iced::alignment::Horizontal::Right,
+        };
+        widget::column![element]
+            .width(Length::Fill)
+            .align_x(horizontal)
+            .into()
     }
 
     fn render_list(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
@@ -483,24 +548,23 @@ where
 
     fn render_list_item(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
         let marker_gap = self.paragraph_spacing.unwrap_or(5.0);
+
+        if let Some(checkbox) = node.direct_task_checkbox() {
+            let checked = checkbox.get_attr("checked").is_some();
+            let body = self.render_list_item_body_excluding_inputs(node, data);
+            return widget::row![
+                widget::text("•").size(self.text_size),
+                widget::checkbox(checked),
+                body.render(),
+            ]
+            .spacing(marker_gap)
+            .align_y(iced::Alignment::Start)
+            .into();
+        }
+
         let content = self.render_list_item_content(node, data);
 
-        if node.has_task_checkbox_child() {
-            let marker_gap = self.paragraph_spacing.unwrap_or(5.0);
-            let checkbox = node
-                .children()
-                .into_iter()
-                .find(|c| c.tag_name() == Some("input"))
-                .map(|c| self.traverse_dom(c, data));
-            let body = self.render_list_item_content(node, data);
-            if let Some(checkbox) = checkbox {
-                return widget::row![checkbox.render(), body.render()]
-                    .spacing(marker_gap)
-                    .align_y(iced::Alignment::Start)
-                    .into();
-            }
-            return body;
-        } else if let Some(num) = data.li_ordered_number {
+        if let Some(num) = data.li_ordered_number {
             widget::row![
                 widget::text(format!("{num}.")).size(self.text_size),
                 content.render(),
@@ -531,9 +595,87 @@ where
             .collect();
 
         if meaningful.len() == 1 && meaningful[0].tag_name() == Some("p") {
-            self.render_children(meaningful[0], data)
+            self.render_list_item_content(meaningful[0], data)
         } else {
-            self.render_children(node, data)
+            self.render_list_item_body_excluding_inputs(node, data)
+        }
+    }
+
+    fn render_list_item_body_excluding_inputs(
+        &mut self,
+        node: DomRef<'_>,
+        data: ChildData,
+    ) -> RenderedSpan<'a, M, T> {
+        let mut column = Vec::new();
+        let mut row = RenderedSpan::None;
+
+        for child in node.children() {
+            if child.is_useless() || DomRef::is_task_checkbox(child) {
+                continue;
+            }
+            let element = if child.tag_name() == Some("p") {
+                self.render_list_item_body_excluding_inputs(child, data)
+            } else {
+                self.traverse_dom(child, data)
+            };
+            if child.is_block_element() {
+                if !row.is_empty() {
+                    let mut old_row = RenderedSpan::None;
+                    std::mem::swap(&mut row, &mut old_row);
+                    column.push(old_row);
+                }
+                column.push(element);
+            } else {
+                row = row + element;
+            }
+        }
+
+        if !row.is_empty() {
+            column.push(row);
+        }
+
+        let len = column.len();
+        if len == 0 {
+            RenderedSpan::None
+        } else if len == 1 {
+            column.into_iter().next().unwrap()
+        } else {
+            widget::column(
+                column
+                    .into_iter()
+                    .filter(|n| !n.is_empty())
+                    .map(RenderedSpan::render),
+            )
+            .spacing(self.paragraph_spacing.unwrap_or(5.0))
+            .width(Length::Fill)
+            .into()
+        }
+    }
+
+    /// Badge `<p>` with only `img` or `a>img` — render the graphic directly (no extra block wrap).
+    fn render_shield_badge(
+        &mut self,
+        paragraph: DomRef<'_>,
+        data: ChildData,
+    ) -> Element<'a, M, T> {
+        let mut row = widget::Row::new().spacing(6.0);
+        let mut has_badge = false;
+        for child in paragraph.children() {
+            if child.is_useless() {
+                continue;
+            }
+            match child.tag_name() {
+                Some("img") | Some("a") => {
+                    row = row.push(self.traverse_dom(child, data).render());
+                    has_badge = true;
+                }
+                _ => {}
+            }
+        }
+        if has_badge {
+            row.into()
+        } else {
+            self.traverse_dom(paragraph, data).render()
         }
     }
 
@@ -758,29 +900,60 @@ where
                 if Self::fragment_is_shield_paragraph(fragment) {
                     let mut row = widget::Row::new().spacing(6.0);
                     while index < cache.len() {
-                        if let Some(CachedBlock::Fragment(f)) = cache.entry(index) {
-                            if Self::fragment_is_shield_paragraph(f) {
-                                row = row.push(
-                                    self.render_fragment_roots(
-                                        f,
-                                        child_data_for_block_alignment(cache.entry_alignment(index)),
-                                    )
-                                    .render(),
-                                );
+                        match cache.entry(index) {
+                            Some(CachedBlock::Empty) => {
                                 index += 1;
                                 continue;
                             }
+                            Some(CachedBlock::Fragment(f))
+                                if Self::fragment_is_shield_paragraph(f) =>
+                            {
+                                let roots = DomRef::fragment_roots(f);
+                                if roots.len() == 1 {
+                                    row = row.push(
+                                        self.render_shield_badge(
+                                            roots[0],
+                                            child_data_for_block_alignment(
+                                                cache.entry_alignment(index),
+                                            ),
+                                        ),
+                                    );
+                                } else {
+                                    row = row.push(
+                                        self.render_fragment_roots(
+                                            f,
+                                            child_data_for_block_alignment(
+                                                cache.entry_alignment(index),
+                                            ),
+                                        )
+                                        .render(),
+                                    );
+                                }
+                                index += 1;
+                            }
+                            _ => break,
                         }
-                        break;
                     }
-                    column = column.push(row);
+                    let badge_row: Element<'a, M, T> = row.width(Length::Shrink).into();
+                    column = column.push(if let Some(align) = block_data.alignment {
+                        Self::stack_align_in_viewport(badge_row, align)
+                    } else {
+                        badge_row
+                    });
                     continue;
                 }
             }
 
+            let mut center_wrapper_fragment = false;
             let span = match cache.entry(index) {
                 Some(CachedBlock::Fragment(fragment)) => {
-                    self.render_fragment_roots(fragment, block_data)
+                    center_wrapper_fragment = Self::fragment_roots_are_center_wrapper(fragment);
+                    let render_data = if center_wrapper_fragment {
+                        block_data
+                    } else {
+                        ChildData::default()
+                    };
+                    self.render_fragment_roots(fragment, render_data)
                 }
                 Some(CachedBlock::Code(code)) => Self::render_fenced_code_block(self, code),
                 Some(CachedBlock::Empty) => RenderedSpan::None,
@@ -790,7 +963,19 @@ where
             if span.is_empty() {
                 continue;
             }
-            column = column.push(span.render());
+            let element = span.render();
+            column = column.push(if let Some(align) = block_data.alignment {
+                if center_wrapper_fragment {
+                    element.into()
+                } else {
+                    Self::stack_align_in_viewport(
+                        widget::container(element).width(Length::Shrink).into(),
+                        align,
+                    )
+                }
+            } else {
+                element.into()
+            });
         }
         column.into()
     }
@@ -806,10 +991,15 @@ where
         if tag.as_str() != "p" {
             return false;
         }
-        let mut has_img = false;
+        let mut has_badge = false;
         for &child in children {
             match fragment.node(child) {
-                Some(HtmlNode::Element { tag, .. }) if tag.as_str() == "img" => has_img = true,
+                Some(HtmlNode::Element { tag, attrs, .. }) if tag.as_str() == "img" => {
+                    if !Self::fragment_img_is_badge(attrs) {
+                        return false;
+                    }
+                    has_badge = true;
+                }
                 Some(HtmlNode::Element { tag, children, .. }) if tag.as_str() == "a" => {
                     let only_img = children.len() == 1
                         && children.iter().all(|&c| {
@@ -821,13 +1011,44 @@ where
                     if !only_img {
                         return false;
                     }
-                    has_img = true;
+                    let Some(HtmlNode::Element { attrs, .. }) = fragment.node(children[0]) else {
+                        return false;
+                    };
+                    if !Self::fragment_img_is_badge(attrs) {
+                        return false;
+                    }
+                    has_badge = true;
                 }
                 Some(HtmlNode::Text(t)) if t.trim().is_empty() => {}
                 _ => return false,
             }
         }
-        has_img
+        has_badge
+    }
+
+    fn fragment_img_is_badge(attrs: &[crate::html::fragment::HtmlAttr]) -> bool {
+        let Some(src) = attrs
+            .iter()
+            .find(|a| a.name.as_ref() == "src")
+            .map(|a| a.value.as_ref())
+        else {
+            return false;
+        };
+        let lower = src.to_ascii_lowercase();
+        lower.contains("img.shields.io")
+            || lower.contains("shields.io/")
+            || lower.contains("badge.svg")
+            || lower.contains("/badge")
+    }
+
+    fn fragment_roots_are_center_wrapper(fragment: &HtmlFragment) -> bool {
+        !fragment.roots().is_empty()
+            && fragment.roots().iter().all(|&root| {
+                matches!(
+                    fragment.node(root),
+                    Some(HtmlNode::Element { tag, .. }) if tag.as_str() == "center"
+                )
+            })
     }
 
     fn markdown_code_settings(&self) -> markdown::Settings {
@@ -983,6 +1204,40 @@ mod render_tests {
         assert!(
             debug.contains("bold text"),
             "expected bold text in render output, got: {debug}"
+        );
+    }
+
+    #[test]
+    fn centered_inline_markdown_paragraph_stays_single_spans_row() {
+        let fragment = HtmlFragment::from_html(
+            "<center><p>Normal, <em>italic</em>, <strong>bold</strong>, <del>strikethrough</del>, <strong>underline</strong>, <code>code</code>, <a href=\"https://example.com\">link</a></p></center>",
+        );
+        let state = MarkState::from_blocks(&[]);
+        let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
+        let center = DomRef::fragment_roots(&fragment)[0];
+        let paragraph = center
+            .children()
+            .into_iter()
+            .find(|child| child.tag_name() == Some("p"))
+            .expect("paragraph");
+        let child_tags: Vec<_> = paragraph
+            .children()
+            .into_iter()
+            .map(|child| {
+                child
+                    .tag_name()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| "#text".to_string())
+            })
+            .collect();
+
+        let rendered = widget.render_children(paragraph, ChildData::default());
+        let debug = format!("{rendered:?}");
+        eprintln!("paragraph child tags: {child_tags:?}");
+        eprintln!("paragraph debug: {debug}");
+        assert!(
+            matches!(rendered, RenderedSpan::Spans(_)),
+            "expected inline paragraph to stay spans, got {debug}"
         );
     }
 }

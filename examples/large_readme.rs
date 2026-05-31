@@ -45,9 +45,21 @@ enum Message {
 struct App {
     page: Page,
     state: MarkState,
-    images_normal: HashMap<String, image::Handle>,
-    images_svg: HashMap<String, svg::Handle>,
+    images_normal: HashMap<String, RasterImage>,
+    images_svg: HashMap<String, SvgImage>,
     images_in_progress: HashSet<String>,
+}
+
+#[derive(Clone)]
+struct RasterImage {
+    handle: image::Handle,
+    intrinsic_size: Option<(f32, f32)>,
+}
+
+#[derive(Clone)]
+struct SvgImage {
+    handle: svg::Handle,
+    intrinsic_size: Option<(f32, f32)>,
 }
 
 impl App {
@@ -64,11 +76,22 @@ impl App {
             Message::ImageDownloaded(res) => match res {
                 Ok(image) => {
                     if image.is_svg {
-                        self.images_svg
-                            .insert(image.url, svg::Handle::from_memory(image.bytes));
+                        self.images_svg.insert(
+                            image.url,
+                            SvgImage {
+                                handle: svg::Handle::from_memory(image.bytes),
+                                intrinsic_size: image.intrinsic_size,
+                            },
+                        );
                     } else {
                         self.images_normal
-                            .insert(image.url, image::Handle::from_bytes(image.bytes));
+                            .insert(
+                                image.url,
+                                RasterImage {
+                                    handle: image::Handle::from_bytes(image.bytes),
+                                    intrinsic_size: image.intrinsic_size,
+                                },
+                            );
                     }
                 }
                 Err(err) => {
@@ -109,20 +132,46 @@ impl App {
 
     fn draw_image(&self, info: strimd::ImageInfo) -> Element<'static, Message> {
         if let Some(image) = self.images_normal.get(info.url).cloned() {
-            let mut img = widget::image(image);
-            if let Some(w) = info.width {
+            let mut width = info.width;
+            let mut height = info.height;
+            if let Some((intrinsic_w, intrinsic_h)) = image.intrinsic_size
+                && intrinsic_w > 0.0
+                && intrinsic_h > 0.0
+            {
+                match (width, height) {
+                    (Some(w), None) => height = Some(w * intrinsic_h / intrinsic_w),
+                    (None, Some(h)) => width = Some(h * intrinsic_w / intrinsic_h),
+                    _ => {}
+                }
+            }
+
+            let mut img = widget::image(image.handle);
+            if let Some(w) = width {
                 img = img.width(w);
             }
-            if let Some(h) = info.height {
+            if let Some(h) = height {
                 img = img.height(h);
             }
             img.into()
         } else if let Some(image) = self.images_svg.get(info.url).cloned() {
-            let mut img = widget::svg(image);
-            if let Some(w) = info.width {
+            let mut width = info.width;
+            let mut height = info.height;
+            if let Some((intrinsic_w, intrinsic_h)) = image.intrinsic_size
+                && intrinsic_w > 0.0
+                && intrinsic_h > 0.0
+            {
+                match (width, height) {
+                    (Some(w), None) => height = Some(w * intrinsic_h / intrinsic_w),
+                    (None, Some(h)) => width = Some(h * intrinsic_w / intrinsic_h),
+                    _ => {}
+                }
+            }
+
+            let mut img = widget::svg(image.handle);
+            if let Some(w) = width {
                 img = img.width(w);
             }
-            if let Some(h) = info.height {
+            if let Some(h) = height {
                 img = img.height(h);
             }
             img.into()
