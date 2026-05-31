@@ -2,7 +2,7 @@
 
 #![cfg(all(feature = "no_iced", feature = "static"))]
 
-use frostmark::{BlockKind, Document, ParseBackend, ParseProfile};
+use strimd::{BlockKind, Document, ParseBackend, ParseProfile};
 
 #[test]
 fn test_md_preview_through_document() {

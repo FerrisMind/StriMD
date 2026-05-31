@@ -1,9 +1,9 @@
-//! egui UI helpers for frostmark harness examples.
+//! egui UI helpers for StriMD harness examples.
 
 #![allow(dead_code)]
 
 use egui::{Color32, RichText, ScrollArea, Ui};
-use frostmark::{
+use strimd::{
     BlockKind, Document, RenderBlock, StreamDocument, StreamPatch, StreamUpdate,
 };
 
@@ -133,7 +133,7 @@ pub fn stream_fixture_by_words(text: &str, words_per_chunk: usize) -> Vec<String
 }
 
 pub fn append_stream_chunks(source: &str, chunk_size: usize) -> (StreamDocument, Vec<StreamUpdate>) {
-    let mut doc = StreamDocument::new(frostmark::StreamOptions::chat());
+    let mut doc = StreamDocument::new(strimd::StreamOptions::chat());
     let mut updates = Vec::new();
     for chunk in source.as_bytes().chunks(chunk_size) {
         updates.push(doc.append(std::str::from_utf8(chunk).unwrap_or("")));

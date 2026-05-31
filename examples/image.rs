@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use frostmark::{MarkState, MarkWidget};
+use strimd::{MarkState, MarkWidget};
 use iced::{
     Element, Length, Task,
     advanced::image::Handle,
@@ -25,7 +25,7 @@ mod image_loader;
 #[derive(Debug, Clone)]
 enum Message {
     EditedText(widget::text_editor::Action),
-    UpdateState(frostmark::UpdateMsg),
+    UpdateState(strimd::UpdateMsg),
     ImageDownloaded(Result<Image, String>),
 }
 

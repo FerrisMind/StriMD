@@ -1,4 +1,4 @@
-use frostmark::{MarkState, MarkWidget};
+use strimd::{MarkState, MarkWidget};
 use iced::{Element, Task, widget};
 
 #[derive(Debug, Clone)]

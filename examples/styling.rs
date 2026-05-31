@@ -1,4 +1,4 @@
-use frostmark::{MarkState, MarkWidget};
+use strimd::{MarkState, MarkWidget};
 use iced::{Element, Task, widget};
 
 #[derive(Debug, Clone)]
@@ -20,7 +20,7 @@ impl App {
                     // Styles link buttons to look like text links
                     widget::button::text(t, s)
                 })
-                .style(frostmark::Style {
+                .style(strimd::Style {
                     // Example colors
                     text_color: Some(iced::Color::from_rgb8(255, 0, 0)),
                     link_color: Some(iced::Color::from_rgb8(255, 0, 255)),

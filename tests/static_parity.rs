@@ -2,7 +2,7 @@
 
 #![cfg(feature = "static")]
 
-use frostmark::{BlockContent, BlockKind, Document, ParseProfile};
+use strimd::{BlockContent, BlockKind, Document, ParseProfile};
 
 fn fixture(name: &str) -> String {
     std::fs::read_to_string(format!("tests/fixtures/{name}"))
@@ -53,7 +53,7 @@ fn raw_details_routes_to_html_fragment() {
 #[test]
 fn gfm_wikilink_exports_via_pulldown() {
     let doc = Document::parse(&fixture("gfm_wikilink.md"), ParseProfile::GitHubPreview).expect("parse");
-    assert_eq!(doc.parse_backend(), frostmark::ParseBackend::Pulldown);
+    assert_eq!(doc.parse_backend(), strimd::ParseBackend::Pulldown);
     let html = doc.to_html().expect("html");
     assert!(
         html.contains("WikiPage") || html.contains("wiki"),

@@ -2,9 +2,9 @@
 
 #![cfg(all(feature = "static", feature = "_rcdom_compat"))]
 
-use frostmark::HtmlFragment;
-use frostmark::html::fragment::HtmlNode;
-use frostmark::html::rcdom_compat;
+use strimd::HtmlFragment;
+use strimd::html::fragment::HtmlNode;
+use strimd::html::rcdom_compat;
 use html5ever::{local_name, ns, ParseOpts, QualName, tendril::TendrilSink};
 use markup5ever_rcdom::RcDom;
 
@@ -17,7 +17,7 @@ const FIXTURES: &[&str] = &[
 ];
 
 fn parse_treesink(html: &str) -> HtmlFragment {
-    frostmark::html::treesink::parse_html_fragment(html).expect("treesink parse")
+    strimd::html::treesink::parse_html_fragment(html).expect("treesink parse")
 }
 
 fn parse_rcdom(html: &str) -> HtmlFragment {

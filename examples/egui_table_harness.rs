@@ -1,4 +1,4 @@
-//! Task 4.5 — egui harness: static + streamed GFM tables via shared frostmark model.
+//! Task 4.5 — egui harness: static + streamed GFM tables via shared StriMD model.
 //!
 //! ```bash
 //! # Headless checks (CI)
@@ -17,7 +17,7 @@ mod harness_checks;
 mod egui_ui;
 
 use eframe::egui;
-use frostmark::{Document, ParseProfile};
+use strimd::{Document, ParseProfile};
 
 fn main() -> eframe::Result<()> {
     if std::env::args().any(|a| a == "--check") {
@@ -49,12 +49,12 @@ fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([960.0, 720.0])
-            .with_title("frostmark egui table harness (Task 4.5)"),
+            .with_title("StriMD egui table harness (Task 4.5)"),
         ..Default::default()
     };
 
     eframe::run_native(
-        "frostmark egui table harness",
+        "StriMD egui table harness",
         native_options,
         Box::new(|_ctx| {
             Ok(Box::new(TableHarnessApp {
@@ -74,9 +74,9 @@ fn main() -> eframe::Result<()> {
 struct TableHarnessApp {
     static_doc: Document,
     static_html: String,
-    _stream_doc: frostmark::StreamDocument,
-    stream_updates: Vec<frostmark::StreamUpdate>,
-    stream_blocks: Vec<frostmark::RenderBlock>,
+    _stream_doc: strimd::StreamDocument,
+    stream_updates: Vec<strimd::StreamUpdate>,
+    stream_blocks: Vec<strimd::RenderBlock>,
     static_err: Option<String>,
     stream_err: Option<String>,
     stream_source: String,
@@ -85,7 +85,7 @@ struct TableHarnessApp {
 impl eframe::App for TableHarnessApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Task 4.5 — shared frostmark table path");
+            ui.heading("Task 4.5 — shared StriMD table path");
             ui.label("No chat_table workaround — tables from BlockKind::Table only.");
 
             ui.separator();

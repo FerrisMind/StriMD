@@ -1,14 +1,14 @@
 [package]
-name = "frostmark"
-version = "0.3.1-dev"
+name = "strimd"
+version = "1.0.0-dev"
 edition = "2024"
-authors = ["Mrmayman <navneetkrishna22@gmail.com>"]
-description = "HTML/Markdown renderer for the Iced GUI framework with headless static and streaming modes"
+authors = ["FerrisMind <ferrismindrust@outlook.com>"]
+description = "StriMD — HTML/Markdown renderer for iced with headless static and streaming modes"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/Mrmayman/frostmark"
-documentation = "https://docs.rs/frostmark"
+repository = "https://github.com/FerrisMind/strimd"
+documentation = "https://docs.rs/strimd"
 readme = "README.md"
-keywords = ["gui", "iced", "markdown", "html", "renderer"]
+keywords = ["gui", "iced", "markdown", "html", "renderer", "strimd", "streaming"]
 categories = ["gui"]
 
 [dependencies]
@@ -59,7 +59,7 @@ _iced_backend = [
 _html_preprocess = ["dep:lol_html"]
 _rcdom_compat = ["dep:markup5ever_rcdom"]
 
-# Backward-compatible aliases (pulldown-only; comrak removed in 0.3)
+# Backward-compatible aliases (pulldown-only; comrak removed in 1.0)
 markdown = ["static"]
 iced-wgpu = ["iced/wgpu"]
 iced-tiny-skia = ["iced/tiny-skia"]

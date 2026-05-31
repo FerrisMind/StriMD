@@ -3,7 +3,7 @@ use std::{
     fmt::Display,
 };
 
-use frostmark::{MarkState, MarkWidget, UpdateMsg};
+use strimd::{MarkState, MarkWidget, UpdateMsg};
 use iced::{
     Alignment, Element, Task,
     widget::{self, image, svg},
@@ -107,7 +107,7 @@ impl App {
         self.download_images()
     }
 
-    fn draw_image(&self, info: frostmark::ImageInfo) -> Element<'static, Message> {
+    fn draw_image(&self, info: strimd::ImageInfo) -> Element<'static, Message> {
         if let Some(image) = self.images_normal.get(info.url).cloned() {
             let mut img = widget::image(image);
             if let Some(w) = info.width {

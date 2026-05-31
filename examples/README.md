@@ -50,7 +50,7 @@ Demonstrates:
 - SVG rendering
 - Handling link clicks
 
-Side-by-side comparison with frostmark (left) and VSCode (right):
+Side-by-side comparison with StriMD (left) and VSCode (right):
 
 ![](assets/large_readme.png)
 
@@ -92,7 +92,7 @@ cargo run --example stream_chat --no-default-features --features no_iced,stream
 
 # egui Table Harness (Task 4.5)
 
-Visual + headless verification that GFM tables use the shared frostmark `BlockKind::Table` path (static and streamed). Replaces Nova `chat_table.rs` checks.
+Visual + headless verification that GFM tables use the shared StriMD `BlockKind::Table` path (static and streamed). Replaces Nova `chat_table.rs` checks.
 
 ```sh
 # CI / headless
@@ -106,7 +106,7 @@ cargo run --example egui_table_harness --no-default-features --features no_iced,
 
 # egui Pipeline Harness (Task 7.4)
 
-Unified static preview + streaming pipeline via frostmark only — no app-specific markdown workarounds.
+Unified static preview + streaming pipeline via StriMD only — no app-specific markdown workarounds.
 
 ```sh
 cargo run --example egui_pipeline_harness --no-default-features --features no_iced,static,stream -- --check

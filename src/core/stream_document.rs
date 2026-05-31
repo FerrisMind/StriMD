@@ -16,7 +16,7 @@ pub enum PendingPolicy {
     RawOnly,
 }
 
-/// mdstream configuration for frostmark LLM chat streaming.
+/// mdstream configuration for StriMD LLM chat streaming.
 #[derive(Debug, Clone)]
 pub struct StreamOptions {
     pub profile: ParseProfile,
@@ -218,7 +218,7 @@ impl StreamDocument {
         self.next_id = self.next_id.max(block.id.0 + 1);
         let source_text = block.display_or_raw();
         let source = Arc::<str>::from(source_text);
-        let kind = mdstream_kind_to_frostmark(block.kind);
+        let kind = mdstream_kind_to_strimd(block.kind);
         let content = if block.kind == mdstream::BlockKind::HtmlBlock {
             html_block_content(source.clone(), self.raw_html)
         } else if let Some(events) = self.adapter.committed_events(block.id) {
@@ -255,7 +255,7 @@ impl StreamDocument {
     }
 }
 
-fn mdstream_kind_to_frostmark(kind: mdstream::BlockKind) -> BlockKind {
+fn mdstream_kind_to_strimd(kind: mdstream::BlockKind) -> BlockKind {
     match kind {
         mdstream::BlockKind::Paragraph => BlockKind::Paragraph,
         mdstream::BlockKind::Heading => BlockKind::Heading,

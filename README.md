@@ -1,8 +1,6 @@
-# 🧊 Frostmark
+# StriMD
 
-**An HTML + Markdown viewer for [iced](https://iced.rs/)**
-
-Render rich text in your `iced` app at lightning-fast speeds using plain HTML or Markdown!
+**HTML + Markdown viewer for [iced](https://iced.rs/) — static, streaming, and headless**
 
 ![(Demo showing HTML and Markdown together)](https://github.com/Mrmayman/frostmark/raw/main/examples/assets/live_edit.png)
 
@@ -15,7 +13,7 @@ Render rich text in your `iced` app at lightning-fast speeds using plain HTML or
 ```no_run
 #[cfg(feature = "_iced_backend")]
 fn iced_usage() {
-    use frostmark::MarkState;
+    use strimd::MarkState;
 
     let text = "Hello from **markdown** and <b>HTML</b>!";
     let _state = MarkState::with_html_and_markdown(text);
@@ -44,7 +42,7 @@ You can find runnable examples [here](examples/README.md)
 ```no_run
 #[cfg(feature = "_iced_backend")]
 fn iced_full_example() {
-    use frostmark::{MarkState, MarkWidget};
+    use strimd::{MarkState, MarkWidget};
     use iced::{widget, Element, Task};
 
     const YOUR_TEXT: &str = "Hello from **markdown** and <b>HTML</b>!";
@@ -84,7 +82,7 @@ fn iced_full_example() {
 
 </details>
 
-**Note:** Markdown parsing uses **pulldown-cmark** only (comrak removed in 0.3).
+**Note:** Markdown parsing uses **pulldown-cmark** only (comrak removed in 1.0). See [changelogs/1.0.0.md](changelogs/1.0.0.md) for the stack migration release notes.
 Headless consumers should disable default features and enable only the supported
 public features they need.
 
@@ -92,8 +90,8 @@ public features they need.
 
 The default **iced** backend still renders HTML via [`html5ever`](https://crates.io/crates/html5ever/)
 and `MarkWidget`. New **headless** APIs parse Markdown into backend-agnostic
-[`Document`](https://docs.rs/frostmark/latest/frostmark/struct.Document.html) /
-[`StreamDocument`](https://docs.rs/frostmark/latest/frostmark/struct.StreamDocument.html)
+[`Document`](https://docs.rs/strimd/latest/strimd/struct.Document.html) /
+[`StreamDocument`](https://docs.rs/strimd/latest/strimd/struct.StreamDocument.html)
 blocks using **pulldown-cmark** and vendored **mdstream** for streaming.
 
 ## Supported Crate Features (public contract)
@@ -107,7 +105,7 @@ blocks using **pulldown-cmark** and vendored **mdstream** for streaming.
 Example headless dependency:
 
 ```toml
-frostmark = { path = "...", default-features = false, features = ["no_iced", "static", "stream"] }
+strimd = { path = "...", default-features = false, features = ["no_iced", "static", "stream"] }
 ```
 
 Headless examples (no GPU / no iced window):
@@ -122,7 +120,7 @@ cargo run --example stream_chat --no-default-features --features no_iced,stream
 
 CI runs `./scripts/verify-features.sh` and headless jobs via `.github/workflows/ci.yml`.
 
-See [docs/API.md](docs/API.md) for the public API reference, [docs/MIGRATION.md](docs/MIGRATION.md) for the pulldown/mdstream migration guide, and [docs/LEGACY_REMOVAL_GATE.md](docs/LEGACY_REMOVAL_GATE.md) for comrak/RcDom removal criteria.
+See [docs/API.md](docs/API.md) for the public API reference, [docs/MIGRATION.md](docs/MIGRATION.md) for the pulldown/mdstream migration guide, [changelogs/1.0.0.md](changelogs/1.0.0.md) for the 1.0 release notes, and [docs/LEGACY_REMOVAL_GATE.md](docs/LEGACY_REMOVAL_GATE.md) for legacy removal criteria.
 
 ## Implementation-only features (unsupported)
 
@@ -147,6 +145,7 @@ These exist for migration and may change without notice:
 
 | Version | iced | MSRV |
 |:-:|:-:|:-:|
+| 1.0 | **0.14** | **1.88** |
 | 0.3 | **0.14** | **1.88** |
 | 0.2 | 0.13 | 1.82 |
 | 0.1 | 0.13 | 1.82 |

@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-/// Apply frostmark's fixed rewrite rules before html5ever parsing.
+/// Apply StriMD's fixed rewrite rules before html5ever parsing.
 ///
 /// When `_html_preprocess` is disabled this is a no-op passthrough.
 #[must_use]

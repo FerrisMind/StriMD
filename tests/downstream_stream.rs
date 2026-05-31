@@ -2,7 +2,7 @@
 
 #![cfg(all(feature = "no_iced", feature = "stream"))]
 
-use frostmark::{BlockContent, StreamDocument, StreamOptions, StreamPatch};
+use strimd::{BlockContent, StreamDocument, StreamOptions, StreamPatch};
 
 #[test]
 fn stream_patches_update_incrementally() {

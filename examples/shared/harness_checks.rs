@@ -1,9 +1,9 @@
 //! Headless verification for egui harness apps (Tasks 4.5 and 7.4).
-//! Uses only the public frostmark API — no app-specific table workarounds.
+//! Uses only the public StriMD API — no app-specific table workarounds.
 
 #![allow(dead_code)]
 
-use frostmark::{
+use strimd::{
     BlockContent, BlockKind, Document, ParseBackend, ParseProfile, StreamDocument, StreamOptions,
     StreamPatch,
 };
@@ -89,7 +89,7 @@ pub fn check_stream_table_path() -> CheckResult {
     Ok(())
 }
 
-/// Task 7.4 — static preview + streaming share frostmark without duplicate parsers.
+/// Task 7.4 — static preview + streaming share StriMD without duplicate parsers.
 pub fn check_unified_pipeline() -> CheckResult {
     check_static_table_path()?;
     check_stream_table_path()?;

@@ -2,7 +2,7 @@
 
 #![cfg(feature = "stream")]
 
-use frostmark::{
+use strimd::{
     BlockContent, BlockKind, StreamDocument, StreamOptions, StreamPatch,
 };
 

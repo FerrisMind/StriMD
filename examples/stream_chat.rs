@@ -4,7 +4,7 @@
 //! cargo run --example stream_chat --no-default-features --features no_iced,stream
 //! ```
 
-use frostmark::{BlockKind, StreamDocument, StreamOptions, StreamPatch};
+use strimd::{BlockKind, StreamDocument, StreamOptions, StreamPatch};
 
 fn main() {
     let response = include_str!("../tests/fixtures/stream_table.md");

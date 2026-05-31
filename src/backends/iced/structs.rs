@@ -88,7 +88,7 @@ pub(crate) type FStyleLinkButton<T> =
 ///
 /// ```no_run
 /// // inside your view function
-/// # use frostmark::{MarkWidget, MarkState};
+/// # use strimd::{MarkWidget, MarkState};
 /// # struct E { mark_state: MarkState }
 /// # #[derive(Clone)]
 /// # enum Message {}
@@ -203,7 +203,7 @@ impl<'a, M: 'a, T: 'a> MarkWidget<'a, M, T> {
     /// When clicking a link, send a message to handle it.
     ///
     /// ```no_run
-    /// # use frostmark::{MarkWidget, MarkState};
+    /// # use strimd::{MarkWidget, MarkState};
     /// # #[derive(Clone)]
     /// # enum Message { OpenLink(String) }
     /// # struct E {mark_state: MarkState} impl E { fn e(&self) {
@@ -254,7 +254,7 @@ impl<'a, M: 'a, T: 'a> MarkWidget<'a, M, T> {
     /// - **Custom Downloader**: You’ll need to implement your own
     ///   downloader and load it with `iced::widget::image::Handle::from_bytes`
     ///   (or the SVG equivalent).
-    /// - **Why?**: Frostmark does not provide built-in
+    /// - **Why?**: StriMD does not provide built-in
     ///   HTTP client functionality or async runtimes for image downloading,
     ///   as these are out of scope. The app must handle these responsibilities.
     #[must_use]
@@ -285,7 +285,7 @@ impl<'a, M: 'a, T: 'a> MarkWidget<'a, M, T> {
     /// in your `update()` function to apply the changes.
     ///
     /// ```no_run
-    /// use frostmark::{MarkWidget, MarkState, UpdateMsg};
+    /// use strimd::{MarkWidget, MarkState, UpdateMsg};
     ///
     /// struct App { mark_state: MarkState }
     /// #[derive(Clone)]

@@ -20,7 +20,7 @@ use super::dom::DomRef;
 /// - Create a new one if the document changes
 ///
 /// ```no_run
-/// # use frostmark::MarkState;
+/// # use strimd::MarkState;
 /// # const YOUR_TEXT: &str = "";
 /// # fn e() { let m =
 /// MarkState::with_html(YOUR_TEXT)

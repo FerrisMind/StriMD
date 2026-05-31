@@ -2,7 +2,7 @@
 
 #![cfg(all(feature = "_iced_backend", not(feature = "no_iced")))]
 
-use frostmark::{BlockKind, Document, MarkState, ParseProfile};
+use strimd::{BlockKind, Document, MarkState, ParseProfile};
 
 #[test]
 fn mark_state_from_document_builds_block_cache() {
@@ -26,7 +26,7 @@ fn document_with_table_and_code_produces_blocks() {
 #[cfg(feature = "stream")]
 #[test]
 fn streamed_gfm_table_syncs_to_mark_state() {
-    use frostmark::{StreamDocument, StreamOptions};
+    use strimd::{StreamDocument, StreamOptions};
 
     let source = include_str!("fixtures/stream_table.md");
     let mut stream = StreamDocument::new(StreamOptions::chat());

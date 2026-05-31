@@ -4,7 +4,7 @@
 //! cargo run --example static_export --no-default-features --features no_iced,static
 //! ```
 
-use frostmark::{Document, ParseBackend, ParseProfile};
+use strimd::{Document, ParseBackend, ParseProfile};
 
 fn main() {
     let source = include_str!("assets/TEST.md");

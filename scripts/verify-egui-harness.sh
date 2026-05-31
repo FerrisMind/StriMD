@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Task 4.5 / 7.4 — egui harness checks inside frostmark (no Nova).
+# Task 4.5 / 7.4 — egui harness checks inside StriMD (no Nova).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

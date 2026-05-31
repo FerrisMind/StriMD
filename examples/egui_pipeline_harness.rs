@@ -1,4 +1,4 @@
-//! Task 7.4 — egui harness: unified frostmark pipeline (static + stream, no special cases).
+//! Task 7.4 — egui harness: unified StriMD pipeline (static + stream, no special cases).
 //!
 //! ```bash
 //! cargo run --example egui_pipeline_harness --no-default-features --features no_iced,static,stream -- --check
@@ -14,7 +14,7 @@ mod harness_checks;
 mod egui_ui;
 
 use eframe::egui;
-use frostmark::{Document, ParseProfile, StreamDocument};
+use strimd::{Document, ParseProfile, StreamDocument};
 
 fn main() -> eframe::Result<()> {
     if std::env::args().any(|a| a == "--check") {
@@ -48,12 +48,12 @@ fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1024.0, 760.0])
-            .with_title("frostmark egui pipeline harness (Task 7.4)"),
+            .with_title("StriMD egui pipeline harness (Task 7.4)"),
         ..Default::default()
     };
 
     eframe::run_native(
-        "frostmark egui pipeline harness",
+        "StriMD egui pipeline harness",
         native_options,
         Box::new(|_ctx| {
             Ok(Box::new(PipelineHarnessApp {
@@ -72,15 +72,15 @@ struct PipelineHarnessApp {
     preview_doc: Document,
     preview_html: String,
     stream_doc: StreamDocument,
-    stream_updates: Vec<frostmark::StreamUpdate>,
-    stream_blocks: Vec<frostmark::RenderBlock>,
+    stream_updates: Vec<strimd::StreamUpdate>,
+    stream_blocks: Vec<strimd::RenderBlock>,
     pipeline_err: Option<String>,
 }
 
 impl eframe::App for PipelineHarnessApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Task 7.4 — unified frostmark pipeline");
+            ui.heading("Task 7.4 — unified StriMD pipeline");
             ui.label(
                 "Static preview + LLM streaming via Document / StreamDocument only. \
                  No comrak, no chat_table, no app preprocess hooks.",

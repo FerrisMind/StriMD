@@ -1,6 +1,6 @@
-# Frostmark public API
+# StriMD public API
 
-This document describes the **stable public contract** for frostmark integrators. Only three user-facing Cargo features exist: `no_iced`, `static`, and `stream`.
+This document describes the **stable public contract** for StriMD integrators. Only three user-facing Cargo features exist: `no_iced`, `static`, and `stream`.
 
 Implementation features (`_iced_backend`, `_html_preprocess`, `_rcdom_compat`) are migration internals and may change without notice.
 
@@ -15,13 +15,13 @@ Implementation features (`_iced_backend`, `_html_preprocess`, `_rcdom_compat`) a
 Typical headless dependency:
 
 ```toml
-frostmark = { version = "0.3", default-features = false, features = ["no_iced", "static", "stream"] }
+strimd = { version = "1.0", default-features = false, features = ["no_iced", "static", "stream"] }
 ```
 
 Default GUI dependency (iced + pulldown):
 
 ```toml
-frostmark = "0.3"
+strimd = "1.0"
 ```
 
 ## Core types
@@ -45,10 +45,10 @@ Pulldown event internals are **not** exposed in the public API.
 ## Static preview
 
 ```rust
-use frostmark::{Document, ParseProfile};
+use strimd::{Document, ParseProfile};
 
 let doc = Document::parse(source, ParseProfile::GitHubPreview)?;
-assert_eq!(doc.parse_backend(), frostmark::ParseBackend::Pulldown);
+assert_eq!(doc.parse_backend(), strimd::ParseBackend::Pulldown);
 
 for block in doc.blocks() {
     // inspect block.kind, block.content, block.id
@@ -66,7 +66,7 @@ let html = doc.to_html()?;
 
 ```rust
 let doc = Document::parse(source, ParseProfile::GitHubPreview)?;
-assert_eq!(doc.parse_backend(), frostmark::ParseBackend::Pulldown);
+assert_eq!(doc.parse_backend(), strimd::ParseBackend::Pulldown);
 assert_eq!(doc.diagnostics().to_string(), "backend=pulldown");
 ```
 
@@ -75,7 +75,7 @@ assert_eq!(doc.diagnostics().to_string(), "backend=pulldown");
 Use `StreamOptions::chat()` for chat UIs. It configures mdstream to invalidate footnotes and late reference definitions.
 
 ```rust
-use frostmark::{StreamDocument, StreamOptions, StreamPatch};
+use strimd::{StreamDocument, StreamOptions, StreamPatch};
 
 let mut doc = StreamDocument::new(StreamOptions::chat());
 
@@ -103,7 +103,7 @@ Committed blocks are parsed once and cached. Pending blocks reparse on each appe
 When `_iced_backend` is active (default, without `no_iced`):
 
 ```rust
-use frostmark::{Document, MarkState, MarkWidget, ParseProfile};
+use strimd::{Document, MarkState, MarkWidget, ParseProfile};
 
 // Legacy string API (still supported)
 let state = MarkState::with_html_and_markdown(text);
@@ -134,7 +134,7 @@ Raw HTML in Markdown is parsed into owned `HtmlFragment` trees via html5ever Tre
 
 ```rust
 #[cfg(feature = "static")]
-use frostmark::HtmlFragment;
+use strimd::HtmlFragment;
 
 let fragment = HtmlFragment::from_html("<details><summary>x</summary></details>")?;
 ```

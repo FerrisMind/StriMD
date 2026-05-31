@@ -1,24 +1,24 @@
 # Crate split spike (Task 8.4)
 
-**Decision:** Stay on a **single crate** for the 0.3 release. Revisit split only if external consumers repeatedly depend on migration features or Cargo feature confusion becomes a support burden.
+**Decision:** Stay on a **single crate** for the 1.0 release. Revisit split only if external consumers repeatedly depend on migration features or Cargo feature confusion becomes a support burden.
 
 ## Goal
 
-Requirement R1.7 asks whether frostmark should split into `frostmark-core` + `frostmark-iced` so that only `no_iced`, `static`, and `stream` appear as visible features.
+Requirement R1.7 asks whether StriMD should split into `strimd-core` + `strimd-iced` so that only `no_iced`, `static`, and `stream` appear as visible features.
 
 ## Options evaluated
 
 ### A. Single crate (current)
 
 ```
-frostmark
+strimd
 ├── public: no_iced, static, stream
 └── internal: _iced_backend, _rcdom_compat, _html_preprocess
 ```
 
 **Pros**
 
-- One version line, one docs.rs page, simpler path dependency for Nova/frostmark consumers.
+- One version line, one docs.rs page, simpler path dependency for Nova/StriMD consumers.
 - Migration fallbacks are already gated and documented as unsupported.
 - `compile_error!` guards prevent invalid feature combinations.
 - Headless CI uses `default-features = false` cleanly today.
@@ -28,12 +28,12 @@ frostmark
 - Cargo `--features` listing shows internal `_`-prefixed flags.
 - Default features use pulldown-only parsing (Task 8.1 complete).
 
-### B. Split: `frostmark-core` + `frostmark-iced`
+### B. Split: `strimd-core` + `strimd-iced`
 
 ```
-frostmark-core   → no_iced, static, stream only
-frostmark-iced   → re-exports core + MarkWidget/MarkState
-frostmark        → thin facade depending on both (optional)
+strimd-core   → no_iced, static, stream only
+strimd-iced   → re-exports core + MarkWidget/MarkState
+strimd        → thin facade depending on both (optional)
 ```
 
 **Pros**
@@ -44,12 +44,12 @@ frostmark        → thin facade depending on both (optional)
 **Cons**
 
 - Breaking publish/co-versioning overhead (two crates, two READMEs, cross-crate doc links).
-- Nova and frostmark examples must update dependency paths.
+- Nova and StriMD examples must update dependency paths.
 - No functional gain from splitting until optional deps grow further.
 
-### C. Split: `frostmark` + `frostmark-iced` only
+### C. Split: `strimd` + `strimd-iced` only
 
-Core stays as `frostmark` with headless features; iced moves to `frostmark-iced`.
+Core stays as `strimd` with headless features; iced moves to `strimd-iced`.
 
 **Pros**
 
@@ -62,13 +62,13 @@ Core stays as `frostmark` with headless features; iced moves to `frostmark-iced`
 
 ## Recommendation
 
-**Do not split before 0.3 release.**
+**Do not split before 1.0 release.**
 
 1. Task 8.1 complete — comrak removed; revisit split only if compile times or API surface force it.
 2. Document the three-feature contract in README, `docs/API.md`, and crate-level docs (Task 8.3).
 3. Re-evaluate split if post-release feedback shows consumers enabling `_`-prefixed features despite documentation.
 
-If split becomes necessary later, prefer **Option B** with `frostmark-core` as the semver anchor and `frostmark-iced` as an optional GUI layer.
+If split becomes necessary later, prefer **Option B** with `strimd-core` as the semver anchor and `strimd-iced` as an optional GUI layer.
 
 ## Verification
 

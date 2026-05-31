@@ -1,8 +1,8 @@
-# Frostmark stack migration guide
+# StriMD stack migration guide
 
-This document tracks the frostmark-only migration from comrak + full-document RcDom to pulldown-cmark + mdstream + `RenderBlock` / `HtmlFragment`.
+This document tracks the StriMD migration from comrak + full-document RcDom to pulldown-cmark + mdstream + `RenderBlock` / `HtmlFragment`.
 
-Nova application integration is **out of scope** for this crate. Tasks 4.5 and 7.4 are validated by egui harness examples inside frostmark:
+Nova application integration is **out of scope** for this crate. Tasks 4.5 and 7.4 are validated by egui harness examples inside StriMD:
 
 - `examples/egui_table_harness` — shared table path (static + stream)
 - `examples/egui_pipeline_harness` — unified pipeline without app workarounds
@@ -20,7 +20,7 @@ Raw HTML -> html5ever TreeSink -> HtmlFragment -> backend
 Enable only these features in downstream `Cargo.toml`:
 
 ```toml
-frostmark = { version = "0.3", default-features = false, features = ["no_iced", "static", "stream"] }
+strimd = { version = "1.0", default-features = false, features = ["no_iced", "static", "stream"] }
 ```
 
 | Feature | When to use |
@@ -44,7 +44,7 @@ Do not depend on these in application code.
 ### Static preview
 
 ```rust
-use frostmark::{Document, MarkState, ParseProfile};
+use strimd::{Document, MarkState, ParseProfile};
 
 let doc = Document::parse(source, ParseProfile::GitHubPreview)?;
 let state = MarkState::from_document(&doc);
@@ -59,7 +59,7 @@ let html = doc.to_html()?;
 ### LLM streaming
 
 ```rust
-use frostmark::{MarkState, StreamDocument, StreamOptions};
+use strimd::{MarkState, StreamDocument, StreamOptions};
 
 let mut stream = StreamDocument::new(StreamOptions::chat());
 let update = stream.append(chunk);
@@ -84,14 +84,14 @@ cargo test --no-default-features --features no_iced,static,stream
 cargo test --features stream --test stream_parity
 ```
 
-## Task status (frostmark repo)
+## Task status (StriMD repo)
 
-Phases 0–7 core implementation and parity fixtures are complete in `nova_refs/frostmark`.
+Phases 0–7 core implementation and parity fixtures are complete in `nova_refs/strimd`.
 
-Remaining frostmark crate work:
+Remaining StriMD crate work:
 
 - **8.1** — done: comrak removed; pulldown-only parsing
 - **8.2** — done: production iced path uses `HtmlFragment` without RcDom
 - **8.3** — done: README, `docs/API.md`, headless/migration guides
-- **8.4** — done: see [CRATE_SPLIT_SPIKE.md](CRATE_SPLIT_SPIKE.md) (recommend single crate for 0.3)
+- **8.4** — done: see [CRATE_SPLIT_SPIKE.md](CRATE_SPLIT_SPIKE.md) (single crate for 1.0)
 - **4.5 / 7.4** — done via egui harness examples (`egui_table_harness`, `egui_pipeline_harness`)
