@@ -15,9 +15,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Check default build
         run: cargo check --all-targets
+      - name: Clippy default (deny warnings)
+        run: cargo clippy --all-targets -- -D warnings
       - name: Test default build
         run: cargo test --lib --tests
 
@@ -50,12 +54,46 @@ jobs:
       - name: Stream tests
         run: cargo test --features stream --test stream_parity
 
+  html-fragment-parity:
+    name: HtmlFragment parity (_rcdom_compat)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: TreeSink vs RcDom fixtures
+        run: cargo test --features _rcdom_compat --test html_fragment_parity
+
+  egui-harness:
+    name: Egui harness (Tasks 4.5 / 7.4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: verify-egui-harness.sh
+        run: ./scripts/verify-egui-harness.sh
+
   feature-matrix:
     name: Feature matrix script
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: verify-features.sh
         run: ./scripts/verify-features.sh
+
+  feature-matrix-full:
+    name: Full matrix + clippy (verify-all-features)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: verify-all-features.sh
+        run: ./scripts/verify-all-features.sh

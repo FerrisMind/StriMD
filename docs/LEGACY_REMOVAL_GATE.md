@@ -22,8 +22,9 @@ Comrak and `_legacy_comrak` were removed after automated parity gates passed. Th
 ## Commands
 
 ```bash
-./scripts/verify-features.sh
-./scripts/verify-all-features.sh   # optional full matrix
+./scripts/verify-features.sh       # CI: feature-matrix job
+./scripts/verify-all-features.sh   # CI: feature-matrix-full job (clippy -D warnings)
+./scripts/verify-egui-harness.sh   # CI: egui-harness job
 cargo test
 cargo test --no-default-features --features no_iced,static,stream
 cargo test --features _rcdom_compat --test html_fragment_parity

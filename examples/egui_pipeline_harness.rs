@@ -40,7 +40,7 @@ fn main() -> eframe::Result<()> {
         "\n",
         include_str!("../tests/fixtures/raw_details.md"),
     );
-    let (stream_doc, stream_updates) = egui_ui::append_stream_chunks(&mixed, 6);
+    let (stream_doc, stream_updates) = egui_ui::append_stream_chunks(mixed, 6);
     let stream_blocks = egui_ui::collect_blocks(&stream_doc);
 
     let pipeline_err = harness_checks::check_unified_pipeline().err();
