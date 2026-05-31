@@ -14,23 +14,23 @@ use crate::profile::ParseProfile;
 /// Collect pulldown events into backend-agnostic [`RenderBlock`] values.
 pub fn parse_blocks(
     source: &str,
-    profile: ParseProfile,
+    _profile: ParseProfile,
     options: &ParseOptions,
 ) -> Result<Vec<RenderBlock>, ParseError> {
-    let _ = options;
-    let parser = Parser::new_ext(source, profile.pulldown_options());
+    let parser = Parser::new_ext(source, options.pulldown);
     let events: Vec<Event<'_>> = parser.collect();
     let events = events
         .into_iter()
         .map(|event| event.into_static())
         .collect::<Vec<_>>();
 
-    Ok(group_events_into_blocks(source, events))
+    Ok(group_events_into_blocks(source, events, options.raw_html))
 }
 
 fn group_events_into_blocks(
     source: &str,
     events: Vec<Event<'static>>,
+    raw_html: crate::options::RawHtmlPolicy,
 ) -> Vec<RenderBlock> {
     let source_arc = Arc::<str>::from(source);
     let mut blocks = Vec::new();
@@ -42,7 +42,7 @@ fn group_events_into_blocks(
         let end = index + end.max(1);
         let slice = &events[index..end];
         let block_source = Arc::<str>::from(event_slice_source(source, slice));
-        let content = block_content_from_events(slice, block_source.clone());
+        let content = block_content_from_events(slice, block_source.clone(), raw_html);
 
         blocks.push(RenderBlock {
             id: BlockId::new(next_id),
@@ -81,8 +81,9 @@ fn classify_block_start(events: &[Event<'static>]) -> (BlockKind, usize) {
             let len = block_extent_for_tag(events, tag);
             (tag_to_kind(tag), len)
         }
-        Event::Html(_) => (BlockKind::HtmlBlock, 1),
-        Event::InlineHtml(_) => (BlockKind::HtmlBlock, 1),
+        Event::Html(_) | Event::InlineHtml(_) => {
+            (BlockKind::HtmlBlock, html_event_extent(events))
+        }
         Event::Rule => (BlockKind::ThematicBreak, 1),
         Event::FootnoteReference(_) => (BlockKind::FootnoteDefinition, 1),
         Event::DisplayMath(_) => (BlockKind::MathBlock, 1),
@@ -120,6 +121,17 @@ fn block_extent_for_tag(events: &[Event<'static>], tag: &Tag<'_>) -> usize {
         }
     }
     events.len()
+}
+
+fn html_event_extent(events: &[Event<'static>]) -> usize {
+    let mut extent = 0usize;
+    for event in events {
+        match event {
+            Event::Html(_) | Event::InlineHtml(_) => extent += 1,
+            _ => break,
+        }
+    }
+    extent.max(1)
 }
 
 fn paragraph_extent(events: &[Event<'static>]) -> usize {
@@ -172,6 +184,20 @@ mod tests {
         assert!(blocks.len() >= 2);
         assert!(blocks.iter().any(|b| b.kind == BlockKind::Heading));
         assert!(blocks.iter().any(|b| b.kind == BlockKind::Paragraph));
+    }
+
+    #[test]
+    fn multiline_raw_html_file_is_single_block() {
+        let source = "<details>\n<summary>x</summary>\n</details>\n";
+        let blocks = parse_blocks(source, ParseProfile::GitHubPreview, &ParseOptions::default())
+            .expect("parse");
+        assert_eq!(blocks.len(), 1, "blocks: {:?}", blocks.len());
+        #[cfg(feature = "static")]
+        {
+            use crate::html::writer;
+            let html = writer::blocks_to_html(&blocks).expect("html");
+            assert!(html.contains("summary"), "html: {html}");
+        }
     }
 
     #[test]

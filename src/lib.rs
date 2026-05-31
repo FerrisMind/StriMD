@@ -40,6 +40,7 @@ pub use core::{
 #[cfg(feature = "_legacy_comrak")]
 pub use core::LegacyFallbackReport;
 pub use options::{LegacyFallbackPolicy, ParseOptions, RawHtmlPolicy};
+pub use parse::{ParseBackend, ParseDiagnostics};
 pub use profile::ParseProfile;
 
 #[cfg(feature = "stream")]

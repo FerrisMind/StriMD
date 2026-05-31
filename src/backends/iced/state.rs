@@ -7,6 +7,7 @@ use super::structs::{UpdateMsg, UpdateMsgKind};
 use crate::core::document::Document;
 use crate::core::block::RenderBlock;
 use crate::html::rcdom_compat::html_to_rcdom;
+use crate::profile::ParseProfile;
 
 #[cfg(feature = "stream")]
 use crate::core::StreamDocument;
@@ -104,23 +105,23 @@ impl MarkState {
         }
     }
 
-    /// Processes documents containing both
-    /// **HTML and Markdown** (or a mix of both).
+    /// Processes documents containing both **HTML and Markdown** (pulldown path).
     #[must_use]
-    #[cfg(feature = "_legacy_comrak")]
     pub fn with_html_and_markdown(input: &str) -> Self {
-        let html = crate::parse::comrak_migration::markdown_to_html(input);
-        Self::with_html(&html)
+        Self::from_parsed_markdown(input, ParseProfile::GitHubPreview)
     }
 
-    /// Processes documents containing **pure Markdown**,
-    /// filtering out any HTML content.
+    /// Processes documents with **Markdown only** (raw HTML escaped per strict profile).
     #[must_use]
-    #[cfg(feature = "_legacy_comrak")]
     pub fn with_markdown_only(input: &str) -> Self {
-        let mut out = String::new();
-        _ = comrak::html::escape(&mut out, input);
-        Self::with_html_and_markdown(&out)
+        Self::from_parsed_markdown(input, ParseProfile::StrictCommonMark)
+    }
+
+    fn from_parsed_markdown(input: &str, profile: ParseProfile) -> Self {
+        match Document::parse(input, profile) {
+            Ok(document) => Self::from_document(&document),
+            Err(_) => Self::from_blocks(&[]),
+        }
     }
 
     /// Updates the internal state of the document.

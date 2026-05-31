@@ -1,6 +1,7 @@
 use crate::core::block::RenderBlock;
 use crate::core::error::ParseError;
 use crate::options::ParseOptions;
+use crate::parse::diagnostics::ParseDiagnostics;
 use crate::parse::legacy_fallback::{self, LegacyFallbackReport};
 use crate::parse::pulldown;
 use crate::profile::ParseProfile;
@@ -10,7 +11,7 @@ use crate::profile::ParseProfile;
 pub struct Document {
     blocks: Vec<RenderBlock>,
     profile: ParseProfile,
-    fallback_report: LegacyFallbackReport,
+    diagnostics: ParseDiagnostics,
 }
 
 impl Document {
@@ -31,7 +32,7 @@ impl Document {
         Ok(Self {
             blocks,
             profile,
-            fallback_report,
+            diagnostics: ParseDiagnostics::from_fallback_report(fallback_report),
         })
     }
 
@@ -47,22 +48,34 @@ impl Document {
         self.profile
     }
 
+    /// Parse diagnostics: active backend and migration flags.
+    #[must_use]
+    pub fn diagnostics(&self) -> ParseDiagnostics {
+        self.diagnostics
+    }
+
+    /// Active Markdown parser backend for this document.
+    #[must_use]
+    pub fn parse_backend(&self) -> crate::parse::ParseBackend {
+        self.diagnostics.backend
+    }
+
     /// Whether comrak fallback was used during parse (migration builds only).
     #[must_use]
     pub fn legacy_fallback_used(&self) -> bool {
-        self.fallback_report.legacy_fallback_used
+        self.diagnostics.legacy_fallback_used()
     }
 
     /// Whether pulldown and comrak HTML differed during shadow compare.
     #[must_use]
     pub fn shadow_mismatch(&self) -> bool {
-        self.fallback_report.shadow_mismatch
+        self.diagnostics.shadow_mismatch()
     }
 
     /// Full legacy migration report from the last parse.
     #[must_use]
     pub fn fallback_report(&self) -> LegacyFallbackReport {
-        self.fallback_report
+        self.diagnostics.fallback
     }
 
     /// Export the document as HTML (requires `static` feature).
@@ -77,6 +90,34 @@ mod tests {
     use super::*;
     use crate::core::block::BlockKind;
     #[test]
+    fn hello_example_text_parses_nonempty() {
+        const YOUR_TEXT: &str = r"
+# Hello, World!
+This is a markdown renderer <b>with inline HTML support!</b>
+- You can mix and match markdown and HTML together
+<hr>
+
+```rust
+App {
+    state: MarkState::with_html_and_markdown(YOUR_TEXT)
+}
+```
+
+## Note
+
+> <b>Fun fact</b>: This is all built on top of existing iced widgets.
+>
+> No new widgets were made for this.
+";
+        let doc = Document::parse(YOUR_TEXT, ParseProfile::GitHubPreview).expect("parse");
+        assert!(
+            !doc.blocks().is_empty(),
+            "expected blocks, got {}",
+            doc.blocks().len()
+        );
+    }
+
+    #[test]
     fn document_blocks_are_stable() {
         let doc = Document::parse("# Hi\n\nParagraph.", ParseProfile::GitHubPreview)
             .expect("parse");
@@ -87,10 +128,50 @@ mod tests {
 
     #[cfg(feature = "static")]
     #[test]
+    fn raw_details_fixture_exports_children() {
+        let source = include_str!("../../tests/fixtures/raw_details.md");
+        let doc = Document::parse(source, ParseProfile::GitHubPreview).expect("parse");
+        let html = doc.to_html().expect("html");
+        assert!(
+            html.contains("summary") || html.contains("Summary"),
+            "html: {html}"
+        );
+    }
+
+    #[cfg(feature = "static")]
+    #[test]
     fn to_html_exports_headings() {
         let doc = Document::parse("# Hi", ParseProfile::GitHubPreview).expect("parse");
         let html = doc.to_html().expect("html");
         assert!(html.contains("<h1>"));
+    }
+
+    #[test]
+    fn diagnostics_expose_pulldown_backend_by_default() {
+        let doc = Document::parse("# Hi", ParseProfile::GitHubPreview).expect("parse");
+        assert_eq!(doc.parse_backend(), crate::parse::ParseBackend::Pulldown);
+        assert!(!doc.legacy_fallback_used());
+    }
+
+    #[cfg(feature = "static")]
+    #[test]
+    fn strip_unsupported_rejects_script_html() {
+        use crate::options::RawHtmlPolicy;
+
+        let mut options = ParseOptions::for_profile(ParseProfile::GitHubPreview);
+        options.raw_html = RawHtmlPolicy::StripUnsupported;
+        let doc = Document::parse_with_options(
+            "<script>alert(1)</script>",
+            ParseProfile::GitHubPreview,
+            &options,
+        )
+        .expect("parse");
+        assert!(doc.blocks().iter().any(|b| matches!(
+            b.content,
+            crate::core::block::BlockContent::Unsupported { .. }
+        )));
+        let html = doc.to_html().expect("html");
+        assert!(!html.contains("<script"));
     }
 
     #[cfg(all(feature = "_legacy_comrak", feature = "static"))]

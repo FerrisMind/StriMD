@@ -57,6 +57,7 @@ pub struct RenderBlock {
 #[derive(Debug, Clone)]
 pub struct CompiledMarkdown {
     source: Arc<str>,
+    #[allow(dead_code)] // consumed by `html::writer` / iced cache when `static` or iced is enabled
     events: Arc<[pulldown_cmark::Event<'static>]>,
 }
 
@@ -73,6 +74,7 @@ impl CompiledMarkdown {
         &self.source
     }
 
+    #[allow(dead_code)]
     pub(crate) fn events(&self) -> &[pulldown_cmark::Event<'static>] {
         &self.events
     }

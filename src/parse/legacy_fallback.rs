@@ -158,4 +158,16 @@ mod tests {
         let opts = ParseOptions::for_profile(ParseProfile::GitHubPreview);
         assert_eq!(opts.legacy_fallback, LegacyFallbackPolicy::ShadowCompare);
     }
+
+    #[test]
+    fn fixture_fallback_usage_is_observable() {
+        use crate::core::document::Document;
+        use crate::parse::diagnostics::ParseBackend;
+
+        let source = "# Stable\n";
+        let doc = Document::parse(source, ParseProfile::GitHubPreview).expect("parse");
+        assert_eq!(doc.parse_backend(), ParseBackend::Pulldown);
+        assert!(!doc.diagnostics().legacy_fallback_used());
+        assert_eq!(doc.diagnostics().to_string(), "backend=pulldown");
+    }
 }

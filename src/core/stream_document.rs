@@ -66,6 +66,7 @@ pub struct StreamDocument {
     blocks: Vec<RenderBlock>,
     pending: Option<RenderBlock>,
     profile: ParseProfile,
+    raw_html: crate::options::RawHtmlPolicy,
     next_id: u64,
 }
 
@@ -83,6 +84,7 @@ impl StreamDocument {
             blocks: Vec::new(),
             pending: None,
             profile: options.profile,
+            raw_html: parse_options.raw_html,
             next_id: 1,
         }
     }
@@ -218,7 +220,7 @@ impl StreamDocument {
         let source = Arc::<str>::from(source_text);
         let kind = mdstream_kind_to_frostmark(block.kind);
         let content = if block.kind == mdstream::BlockKind::HtmlBlock {
-            html_block_content(source.clone())
+            html_block_content(source.clone(), self.raw_html)
         } else if let Some(events) = self.adapter.committed_events(block.id) {
             self.committed_content(source.clone(), events.to_vec(), kind)
         } else if block.kind == mdstream::BlockKind::CodeFence {
@@ -246,7 +248,7 @@ impl StreamDocument {
         kind: BlockKind,
     ) -> BlockContent {
         if kind == BlockKind::HtmlBlock || events_contain_html(&events) {
-            block_content_from_events(&events, source)
+            block_content_from_events(&events, source, self.raw_html)
         } else {
             BlockContent::Markdown(CompiledMarkdown::new(source, events))
         }

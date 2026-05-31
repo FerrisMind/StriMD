@@ -652,8 +652,10 @@ where
         let spacing = self.paragraph_spacing.unwrap_or(5.0);
         let cache = match &self.state.source {
             MarkStateSource::Blocks(cache) => cache,
-            MarkStateSource::LegacyDom(_) => {
-                return widget::Column::new().into();
+            MarkStateSource::LegacyDom(dom) => {
+                return self
+                    .traverse_node(&dom.document, ChildData::default())
+                    .render();
             }
         };
 

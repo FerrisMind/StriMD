@@ -16,6 +16,8 @@ pub use ids::BlockId;
 #[cfg(feature = "_legacy_comrak")]
 pub use crate::parse::legacy_fallback::LegacyFallbackReport;
 
+pub use crate::parse::{ParseBackend, ParseDiagnostics};
+
 #[cfg(feature = "stream")]
 pub use stream_document::{
     PendingPolicy, StreamDocument, StreamOptions, StreamPatch, StreamUpdate,

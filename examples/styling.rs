@@ -25,6 +25,9 @@ impl App {
                     text_color: Some(iced::Color::from_rgb8(255, 0, 0)),
                     link_color: Some(iced::Color::from_rgb8(255, 0, 255)),
                     highlight_color: Some(iced::Color::from_rgb8(0, 255, 0)),
+                    inline_code_background: None,
+                    inline_code_color: None,
+                    code_block_background: None,
                 })
                 // Difference between link buttons and link text:
                 // Link buttons are links with non-text content (eg: images)

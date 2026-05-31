@@ -56,6 +56,7 @@ pub struct HtmlFragment {
     roots: Vec<NodeId>,
 }
 
+#[cfg_attr(not(feature = "static"), allow(dead_code))]
 impl HtmlFragment {
     #[must_use]
     pub fn empty() -> Self {

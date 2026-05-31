@@ -189,6 +189,23 @@ mod tests {
     }
 
     #[test]
+    fn readme_snippet_block_cache_has_dom_children() {
+        use crate::core::document::Document;
+        use crate::profile::ParseProfile;
+
+        let text = "Hello from **markdown** and <b>HTML</b>!";
+        let doc = Document::parse(text, ParseProfile::GitHubPreview).expect("parse");
+        assert!(!doc.blocks().is_empty());
+        let cache = BlockRenderCache::from_blocks(doc.blocks());
+        let any_children = (0..cache.len()).any(|i| {
+            matches!(cache.entry(i), Some(CachedBlock::Dom(dom)) if {
+                !dom.document.children.borrow().is_empty()
+            })
+        });
+        assert!(any_children, "expected non-empty DOM in block cache");
+    }
+
+    #[test]
     fn html_fragment_block_compiles_to_dom() {
         let blocks = pulldown::parse_blocks(
             "<details><summary>x</summary></details>",

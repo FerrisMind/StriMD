@@ -26,4 +26,13 @@ cargo check --no-default-features --features no_iced,static,stream
 echo "== legacy comrak migration =="
 cargo check --features static,stream,_legacy_comrak
 
+echo "== unit + integration tests (default) =="
+cargo test
+
+echo "== streaming parity tests =="
+cargo test --features stream --test stream_parity
+
+echo "== headless tests (lib + integration; iced doctests excluded) =="
+cargo test --no-default-features --features no_iced,static,stream --lib --tests
+
 echo "All feature-matrix checks passed."

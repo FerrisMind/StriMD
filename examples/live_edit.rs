@@ -89,8 +89,8 @@ impl App {
                 editor,
                 widget::scrollable(
                     MarkWidget::new(&self.state)
-                        .on_updating_state(|msg| Message::UpdateState(msg))
-                        .on_clicking_link(|url| Message::ClickedLink(url))
+                        .on_updating_state(Message::UpdateState)
+                        .on_clicking_link(Message::ClickedLink)
                 )
                 .width(Length::Fill),
             ]
