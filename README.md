@@ -103,6 +103,18 @@ Example headless dependency:
 frostmark = { path = "...", default-features = false, features = ["no_iced", "static", "stream"] }
 ```
 
+Headless examples (no GPU / no iced window):
+
+```sh
+# Static preview + HTML export from TEST.md
+cargo run --example static_export --no-default-features --features no_iced,static
+
+# Simulated LLM token streaming via StreamDocument
+cargo run --example stream_chat --no-default-features --features no_iced,stream
+```
+
+CI runs `./scripts/verify-features.sh` and headless jobs via `.github/workflows/ci.yml`.
+
 ## Implementation-only features (unsupported)
 
 These exist for migration and may change without notice:

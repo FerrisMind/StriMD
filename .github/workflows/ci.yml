@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  default:
+    name: Default (iced)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check default build
+        run: cargo check --all-targets
+      - name: Test default build
+        run: cargo test --lib --tests
+
+  headless:
+    name: Headless (no_iced + static + stream)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Headless check
+        run: cargo check --no-default-features --features no_iced,static,stream --all-targets
+      - name: Headless tests
+        run: cargo test --no-default-features --features no_iced,static,stream --lib --tests
+      - name: Headless examples
+        run: |
+          cargo run --example static_export --no-default-features --features no_iced,static > /dev/null
+          cargo run --example stream_chat --no-default-features --features no_iced,stream
+
+  stream:
+    name: Streaming parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Stream tests
+        run: cargo test --features stream --test stream_parity
+
+  feature-matrix:
+    name: Feature matrix script
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: verify-features.sh
+        run: ./scripts/verify-features.sh

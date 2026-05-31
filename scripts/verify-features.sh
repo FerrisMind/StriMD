@@ -32,6 +32,15 @@ cargo test
 echo "== streaming parity tests =="
 cargo test --features stream --test stream_parity
 
+echo "== downstream static integration (Task 7.1) =="
+cargo test --no-default-features --features no_iced,static --test downstream_static
+
+echo "== downstream stream integration (Task 7.2) =="
+cargo test --no-default-features --features no_iced,stream --test downstream_stream
+
+echo "== html preprocess (Task 2.5) =="
+cargo test --features _html_preprocess html::preprocess
+
 echo "== headless tests (lib + integration; iced doctests excluded) =="
 cargo test --no-default-features --features no_iced,static,stream --lib --tests
 

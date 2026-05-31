@@ -67,3 +67,23 @@ An example for styling text and widgets.
 ```sh
 cargo run --example styling
 ```
+
+---
+
+# Static Export (headless)
+
+Parse `assets/TEST.md` through `Document` and export HTML without iced/GPU.
+
+```sh
+cargo run --example static_export --no-default-features --features no_iced,static
+```
+
+---
+
+# Stream Chat (headless)
+
+Simulate LLM token streaming through `StreamDocument` and stream patches.
+
+```sh
+cargo run --example stream_chat --no-default-features --features no_iced,stream
+```
