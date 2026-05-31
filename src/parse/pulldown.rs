@@ -11,6 +11,11 @@ use crate::options::ParseOptions;
 use crate::parse::content::{
     block_content_from_events, code_text_from_events, is_code_fence_slice,
 };
+use crate::parse::wrapper_coalesce::{
+    events_to_html, extend_through_unclosed_container, is_coalesced_wrapper_block,
+    starts_unclosed_html_container,
+};
+use crate::html::sanitize;
 use crate::profile::ParseProfile;
 
 /// Collect pulldown events into backend-agnostic [`RenderBlock`] values.
@@ -40,15 +45,32 @@ fn group_events_into_blocks(
     let mut index = 0usize;
 
     while index < events.len() {
-        let (kind, end) = classify_block_start(&events[index..]);
-        let end = index + end.max(1);
+        let (kind, rel_end) = classify_block_start(&events[index..]);
+        let mut rel_end = rel_end.max(1);
+        if starts_unclosed_html_container(&events[index..index + rel_end]) {
+            let abs_end = extend_through_unclosed_container(&events, index, index + rel_end);
+            rel_end = abs_end - index;
+        }
+        let end = index + rel_end;
         let slice = &events[index..end];
+        let coalesced = is_coalesced_wrapper_block(slice);
         let block_source = if is_code_fence_slice(slice) {
             Arc::<str>::from(code_text_from_events(slice))
+        } else if coalesced {
+            Arc::<str>::from(events_to_html(slice))
         } else {
             Arc::<str>::from(event_slice_source(source, slice))
         };
-        let content = block_content_from_events(slice, block_source.clone(), raw_html);
+        let content = if coalesced {
+            sanitize::block_content_from_raw_html(&events_to_html(slice), raw_html)
+        } else {
+            block_content_from_events(slice, block_source.clone(), raw_html)
+        };
+        let kind = if coalesced {
+            BlockKind::HtmlBlock
+        } else {
+            kind
+        };
 
         blocks.push(RenderBlock {
             id: BlockId::new(next_id),

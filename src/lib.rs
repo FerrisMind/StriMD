@@ -63,7 +63,8 @@ pub use html::fragment::{HtmlAttr, HtmlFragment, HtmlNode, HtmlTag, NodeId};
 // Iced API (default builds)
 #[cfg(all(feature = "_iced_backend", not(feature = "no_iced")))]
 pub use backends::iced::{
-    ImageInfo, MarkState, MarkWidget, RubyMode, Style, UpdateMsg,
+    ImageInfo, MarkState, MarkWidget, RubyMode, Style, UpdateMsg, DEFAULT_INLINE_CODE_BACKGROUND,
+    DEFAULT_INLINE_CODE_FOREGROUND,
 };
 
 #[cfg(all(

@@ -146,6 +146,7 @@ impl App {
 enum Page {
     TestSuite,
     QuantumLauncher,
+    Mpf,
 }
 
 impl Page {
@@ -155,6 +156,7 @@ impl Page {
         match self {
             Page::TestSuite => include_str!("assets/TEST.md"),
             Page::QuantumLauncher => include_str!("assets/QL_README.md"),
+            Page::Mpf => include_str!("assets/MPF.md"),
         }
     }
 }
@@ -167,6 +169,7 @@ impl Display for Page {
             match self {
                 Page::TestSuite => "Test Suite",
                 Page::QuantumLauncher => "QuantumLauncher",
+                Page::Mpf => "MPF",
             }
         )
     }

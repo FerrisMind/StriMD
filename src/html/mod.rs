@@ -1,6 +1,7 @@
 pub mod fragment;
 pub mod preprocess;
 pub mod sanitize;
+pub(crate) mod block_alignment;
 
 #[cfg(feature = "static")]
 pub mod treesink;

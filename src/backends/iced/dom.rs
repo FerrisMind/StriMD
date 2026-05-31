@@ -27,11 +27,6 @@ impl<'a> DomRef<'a> {
     }
 
     #[must_use]
-    pub(crate) fn is_document_root(&self) -> bool {
-        self.fragment.roots().contains(&self.id)
-    }
-
-    #[must_use]
     pub(crate) fn tag_name(&self) -> Option<&str> {
         match self.fragment.node(self.id)? {
             HtmlNode::Element { tag, .. } => Some(tag.as_str()),
@@ -130,14 +125,84 @@ impl<'a> DomRef<'a> {
                 | "br"
                 | "details"
                 | "summary"
+                | "center"
         )
     }
 
     #[must_use]
     pub(crate) fn has_task_checkbox_child(&self) -> bool {
-        self.children().iter().any(|child| {
-            child.tag_name() == Some("input") && child.get_attr("type").as_deref() == Some("checkbox")
+        self.find_descendant(|node| {
+            node.tag_name() == Some("input") && node.get_attr("type").as_deref() == Some("checkbox")
         })
+    }
+
+    #[must_use]
+    pub(crate) fn accumulated_text(&self) -> String {
+        let mut out = String::new();
+        self.accumulate_text(&mut out);
+        out
+    }
+
+    fn accumulate_text(&self, out: &mut String) {
+        match self.fragment.node(self.id) {
+            Some(HtmlNode::Text(text)) => out.push_str(text.as_ref()),
+            Some(HtmlNode::Element { children, .. }) => {
+                for &child in children {
+                    Self::new(self.fragment, child).accumulate_text(out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn find_descendant(&self, mut pred: impl FnMut(DomRef<'a>) -> bool) -> bool {
+        fn walk<'a>(
+            node: DomRef<'a>,
+            depth: usize,
+            pred: &mut impl FnMut(DomRef<'a>) -> bool,
+        ) -> bool {
+            if depth > 8 {
+                return false;
+            }
+            if pred(node) {
+                return true;
+            }
+            for child in node.children() {
+                if walk(child, depth + 1, pred) {
+                    return true;
+                }
+            }
+            false
+        }
+        walk(*self, 0, &mut pred)
+    }
+
+    /// Paragraph that only contains badge image(s), optionally wrapped in a link.
+    #[must_use]
+    pub(crate) fn is_shield_paragraph(&self) -> bool {
+        if self.tag_name() != Some("p") {
+            return false;
+        }
+        let meaningful: Vec<_> = self
+            .children()
+            .into_iter()
+            .filter(|c| !c.is_useless())
+            .collect();
+        let mut has_img = false;
+        for child in meaningful {
+            match child.tag_name() {
+                Some("img") => has_img = true,
+                Some("a") => {
+                    let kids: Vec<_> = child.children().into_iter().filter(|c| !c.is_useless()).collect();
+                    if kids.len() != 1 || kids[0].tag_name() != Some("img") {
+                        return false;
+                    }
+                    has_img = true;
+                }
+                _ => return false,
+            }
+        }
+        has_img
     }
 }
 

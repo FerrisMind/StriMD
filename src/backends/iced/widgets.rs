@@ -20,6 +20,7 @@ where
         b = b.style(move |t, s| f(t, s));
     }
     b
+        .width(Length::Shrink)
 }
 
 pub fn link_text<'a, M: 'a, F>(

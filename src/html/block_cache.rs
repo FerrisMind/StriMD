@@ -10,6 +10,10 @@ use crate::core::block::{
 };
 use crate::core::ids::BlockId;
 use crate::core::document::Document;
+use crate::html::block_alignment::{
+    block_closes_alignment_wrapper, block_opens_alignment_wrapper, fragment_is_complete_alignment_wrapper,
+    BlockAlignment,
+};
 use crate::html::fragment::HtmlFragment;
 #[cfg(feature = "stream")]
 use crate::core::{StreamDocument, StreamPatch, StreamUpdate};
@@ -35,9 +39,11 @@ pub(crate) enum CachedBlock {
 #[derive(Default)]
 pub(crate) struct BlockRenderCache {
     entries: Vec<CachedBlock>,
+    entry_alignment: Vec<Option<BlockAlignment>>,
     ids: Vec<BlockId>,
     statuses: Vec<BlockStatus>,
     indices: HashMap<BlockId, usize>,
+    alignment_context: Option<BlockAlignment>,
     #[cfg(test)]
     compile_count: usize,
 }
@@ -53,6 +59,11 @@ impl BlockRenderCache {
     #[must_use]
     pub fn from_document(document: &Document) -> Self {
         Self::from_blocks(document.blocks())
+    }
+
+    #[must_use]
+    pub fn entry_alignment(&self, index: usize) -> Option<BlockAlignment> {
+        self.entry_alignment.get(index).copied().flatten()
     }
 
     #[must_use]
@@ -77,12 +88,69 @@ impl BlockRenderCache {
 
     pub fn rebuild(&mut self, blocks: &[RenderBlock]) {
         self.entries.clear();
+        self.entry_alignment.clear();
         self.ids.clear();
         self.statuses.clear();
         self.indices.clear();
+        self.alignment_context = None;
+        let mut code_blocks = 0usize;
+        let mut centered = 0usize;
         for block in blocks {
-            self.push_block(block);
+            if matches!(block.content, BlockContent::Code { .. }) {
+                code_blocks += 1;
+            }
+            if fragment_is_complete_alignment_wrapper(block) {
+                self.push_block(block, None);
+                self.alignment_context = None;
+                continue;
+            }
+            if let Some(align) = block_opens_alignment_wrapper(block) {
+                self.alignment_context = Some(align);
+                continue;
+            }
+            if block_closes_alignment_wrapper(block) {
+                self.alignment_context = None;
+                continue;
+            }
+            if self.alignment_context.is_some() {
+                centered += 1;
+            }
+            self.push_block(block, self.alignment_context);
         }
+        // #region agent log
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/home/mod479711/Downloads/.cursor/debug-9a2b4f.log")
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0);
+            let _ = writeln!(
+                f,
+                r#"{{"sessionId":"9a2b4f","hypothesisId":"H1","location":"block_cache.rs:rebuild","message":"block cache rebuilt","data":{{"entries":{},"code_blocks":{},"centered_entries":{}}},"timestamp":{}}}"#,
+                self.entries.len(),
+                code_blocks,
+                centered,
+                ts
+            );
+        }
+        // #endregion
+    }
+
+    #[allow(dead_code)]
+    fn ingest_block(&mut self, block: &RenderBlock) {
+        if let Some(align) = block_opens_alignment_wrapper(block) {
+            self.alignment_context = Some(align);
+            return;
+        }
+        if block_closes_alignment_wrapper(block) {
+            self.alignment_context = None;
+            return;
+        }
+        self.push_block(block, self.alignment_context);
     }
 
     #[cfg(feature = "stream")]
@@ -106,7 +174,7 @@ impl BlockRenderCache {
                 self.remove_pending();
                 for id in blocks {
                     if let Some(block) = stream.committed_block(*id) {
-                        self.push_block(block);
+                        self.ingest_block(block);
                     }
                 }
                 self.sync_pending(stream);
@@ -157,12 +225,13 @@ impl BlockRenderCache {
         self.compile_count
     }
 
-    fn push_block(&mut self, block: &RenderBlock) {
+    fn push_block(&mut self, block: &RenderBlock, alignment: Option<BlockAlignment>) {
         let index = self.entries.len();
         self.ids.push(block.id);
         self.statuses.push(block.status);
         let compiled = self.compile_block(block);
         self.entries.push(compiled);
+        self.entry_alignment.push(alignment);
         self.indices.insert(block.id, index);
     }
 
@@ -175,6 +244,7 @@ impl BlockRenderCache {
             self.indices.remove(&id);
         }
         self.entries.pop();
+        self.entry_alignment.pop();
         self.statuses.pop();
     }
 
@@ -182,7 +252,7 @@ impl BlockRenderCache {
     fn sync_pending(&mut self, stream: &StreamDocument) {
         self.remove_pending();
         if let Some(pending) = stream.pending() {
-            self.push_block(pending);
+            self.ingest_block(pending);
         }
     }
 
@@ -211,6 +281,16 @@ impl BlockRenderCache {
             self.replace_block(index, block);
         }
     }
+}
+
+fn markdown_source_to_html(source: &str, profile: crate::profile::ParseProfile) -> String {
+    let options = profile.pulldown_options();
+    let events: Vec<Event<'static>> = Parser::new_ext(source, options)
+        .map(|event| event.into_static())
+        .collect();
+    let mut html_buf = String::new();
+    html::push_html(&mut html_buf, events.iter().cloned());
+    html_buf
 }
 
 fn markdown_to_fragment(compiled: &CompiledMarkdown) -> HtmlFragment {
@@ -257,6 +337,7 @@ mod tests {
     use super::*;
     use crate::core::block::BlockKind;
     use crate::core::ids::BlockId;
+    use crate::html::block_alignment::BlockAlignment;
     use crate::html::fragment::HtmlFragment;
     #[cfg(feature = "stream")]
     use crate::html::fragment::{HtmlNode, NodeId};
@@ -450,6 +531,57 @@ mod tests {
             .any(|&r| walk(fragment, r, expected))
     }
 
+    fn center_ancestor_contains_h1(fragment: &HtmlFragment) -> bool {
+        fn walk(fragment: &HtmlFragment, id: crate::html::fragment::NodeId, in_center: bool) -> bool {
+            match fragment.node(id) {
+                Some(crate::html::fragment::HtmlNode::Element { tag, children, .. }) => {
+                    let in_center = in_center || tag.as_str() == "center";
+                    if in_center && tag.as_str() == "h1" {
+                        return true;
+                    }
+                    children.iter().any(|&c| walk(fragment, c, in_center))
+                }
+                _ => false,
+            }
+        }
+        fragment.roots().iter().any(|&r| walk(fragment, r, false))
+    }
+
+    #[test]
+    fn split_center_wrapper_assigns_alignment_to_inner_blocks() {
+        let md = "<center>\n\n# Title\n\n</center>\n\n- outside\n";
+        let doc =
+            crate::core::document::Document::parse(md, ParseProfile::GitHubPreview).expect("parse");
+        let cache = BlockRenderCache::from_document(&doc);
+        let mut saw_centered_content = false;
+        let mut saw_uncentered_list = false;
+        for i in 0..cache.len() {
+            if let Some(CachedBlock::Fragment(fragment)) = cache.entry(i) {
+                if fragment_has_tag(fragment, "center") && fragment_has_tag(fragment, "h1") {
+                    saw_centered_content = true;
+                }
+                if fragment_has_tag(fragment, "h1")
+                    && cache.entry_alignment(i) == Some(BlockAlignment::Center)
+                {
+                    saw_centered_content = true;
+                }
+                if fragment_has_tag(fragment, "ul") {
+                    assert_eq!(
+                        cache.entry_alignment(i),
+                        None,
+                        "list after </center> must not inherit center"
+                    );
+                    saw_uncentered_list = true;
+                }
+            }
+        }
+        assert!(
+            saw_centered_content,
+            "center wrapper should coalesce or align inner heading"
+        );
+        assert!(saw_uncentered_list);
+    }
+
     #[test]
     fn hello_fixture_blocks_contain_heading_hr_and_blockquote() {
         const HELLO: &str = r"
@@ -495,19 +627,23 @@ App { state: 1 }
         assert!(has_hr, "fragment missing hr, kinds={kinds:?}");
         assert!(has_blockquote, "fragment missing blockquote, kinds={kinds:?}");
         for (i, block) in doc.blocks().iter().enumerate() {
-            if let Some(CachedBlock::Fragment(fragment)) = cache.entry(i) {
-                if block.kind == BlockKind::HtmlBlock {
-                    assert!(
-                        fragment.roots().iter().any(|&r| {
-                            matches!(
-                                fragment.node(r),
-                                Some(crate::html::fragment::HtmlNode::Element { tag, .. })
-                                    if tag.as_str() == "hr"
-                            )
-                        }),
-                        "hr html block should have hr element root"
-                    );
-                }
+            if block.kind != BlockKind::HtmlBlock {
+                continue;
+            }
+            let Some(CachedBlock::Fragment(fragment)) = cache.entry(i) else {
+                continue;
+            };
+            if block.source.trim().starts_with("<hr") {
+                assert!(
+                    fragment.roots().iter().any(|&r| {
+                        matches!(
+                            fragment.node(r),
+                            Some(crate::html::fragment::HtmlNode::Element { tag, .. })
+                                if tag.as_str() == "hr"
+                        )
+                    }),
+                    "hr html block should have hr element root"
+                );
             }
         }
     }
@@ -594,5 +730,47 @@ fn demo() {}
             panic!("expected fragment");
         };
         assert!(!fragment.roots().is_empty());
+    }
+
+    #[test]
+    fn ql_and_test_have_task_list_blocks() {
+        use crate::core::document::Document;
+        use crate::core::block::BlockKind;
+        use crate::profile::ParseProfile;
+        let test = include_str!("../../examples/assets/TEST.md");
+        let ql = include_str!("../../examples/assets/QL_README.md");
+        let test_doc = Document::parse(test, ParseProfile::GitHubPreview).unwrap();
+        let ql_doc = Document::parse(ql, ParseProfile::GitHubPreview).unwrap();
+        let test_lists = test_doc.blocks().iter().filter(|b| b.kind == BlockKind::List).count();
+        let ql_lists = ql_doc.blocks().iter().filter(|b| b.kind == BlockKind::List).count();
+        assert!(test_lists >= 1, "TEST.md should have list blocks, got {test_lists}");
+        assert!(ql_lists >= 5, "QL_README should have many list blocks, got {ql_lists}");
+    }
+
+    #[test]
+    fn ql_readme_center_does_not_wrap_todo_section() {
+        use super::markdown_source_to_html;
+        use crate::html::fragment::{HtmlFragment, HtmlNode};
+        use crate::profile::ParseProfile;
+        let md = include_str!("../../examples/assets/QL_README.md");
+        let html = markdown_source_to_html(md, ParseProfile::GitHubPreview);
+        let fragment = HtmlFragment::from_html(&html);
+        fn find_todo_in_center(f: &HtmlFragment, id: crate::html::fragment::NodeId, in_center: bool) -> bool {
+            match f.node(id) {
+                Some(HtmlNode::Element { tag, children, .. }) => {
+                    let in_center = in_center || tag.as_str() == "center";
+                    children.iter().any(|&c| find_todo_in_center(f, c, in_center))
+                }
+                Some(HtmlNode::Text(t)) => in_center && t.contains("To-do"),
+                _ => false,
+            }
+        }
+        assert!(
+            !fragment
+                .roots()
+                .iter()
+                .any(|&r| find_todo_in_center(&fragment, r, false)),
+            "To-do must not be inside <center>"
+        );
     }
 }

@@ -80,7 +80,7 @@ pub enum UpdateMsgKind {
 type FClickLink<M> = Box<dyn Fn(String) -> M>;
 type FDrawImage<'a, M, T> = Box<dyn Fn(ImageInfo) -> Element<'static, M, T> + 'a>;
 type FDrawPreBlock<'a, M, T> = Box<dyn Fn(Element<'a, M, T>) -> Element<'a, M, T> + 'a>;
-type FUpdate<M> = Arc<dyn Fn(UpdateMsg) -> M>;
+pub(crate) type FUpdate<M> = Arc<dyn Fn(UpdateMsg) -> M>;
 pub(crate) type FStyleLinkButton<T> =
     Arc<dyn Fn(&T, widget::button::Status) -> widget::button::Style + 'static>;
 

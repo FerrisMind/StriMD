@@ -125,16 +125,27 @@ impl MarkState {
     }
 
     fn from_parsed_markdown(input: &str, profile: ParseProfile) -> Self {
-        match Document::parse(input, profile) {
-            Ok(document) => Self::from_document(&document),
-            Err(_) => Self::from_blocks(&[]),
+        match profile {
+            ParseProfile::StrictCommonMark => match Document::parse(input, profile) {
+                Ok(document) => Self::from_document(&document),
+                Err(_) => Self::from_blocks(&[]),
+            },
+            ParseProfile::GitHubPreview | ParseProfile::ChatStream => {
+                match Document::parse(input, profile) {
+                    Ok(document) => Self::from_document(&document),
+                    Err(_) => Self::from_blocks(&[]),
+                }
+            }
         }
     }
 
     /// Updates the internal state of the document.
     pub fn update(&mut self, action: UpdateMsg) {
-        let UpdateMsgKind::DetailsToggle(id, action) = action.kind;
-        self.dropdown_state.insert(id, action);
+        match action.kind {
+            UpdateMsgKind::DetailsToggle(id, open) => {
+                self.dropdown_state.insert(id, open);
+            }
+        }
     }
 
     /// Retrieves all image URLs that need to be loaded.

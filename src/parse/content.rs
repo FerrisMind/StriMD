@@ -83,7 +83,7 @@ fn is_standalone_html_block(slice: &[Event<'static>]) -> bool {
     }
 }
 
-fn extract_html_from_events(slice: &[Event<'static>]) -> Option<String> {
+pub(crate) fn extract_html_from_events(slice: &[Event<'static>]) -> Option<String> {
     let mut html = String::new();
     for event in slice {
         match event {

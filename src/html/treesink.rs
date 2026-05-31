@@ -105,12 +105,40 @@ impl FragmentSink {
 
     fn into_fragment(self) -> HtmlFragment {
         let mut fragment = HtmlFragment::empty();
-        for child in self.document.0.children.borrow().iter() {
-            if let Some(id) = convert_handle(child, &mut fragment) {
-                fragment.push_root(id);
+        if let Some(body) = find_body_handle(&self.document) {
+            for child in body.0.children.borrow().iter() {
+                if let Some(id) = convert_handle(child, &mut fragment) {
+                    fragment.push_root(id);
+                }
+            }
+        } else {
+            for child in self.document.0.children.borrow().iter() {
+                if let Some(id) = convert_handle(child, &mut fragment) {
+                    fragment.push_root(id);
+                }
             }
         }
         fragment.normalize_roots()
+    }
+}
+
+fn find_body_handle(document: &Handle) -> Option<Handle> {
+    for html in document.0.children.borrow().iter() {
+        if element_local_name(html) == Some("html") {
+            for child in html.0.children.borrow().iter() {
+                if element_local_name(child) == Some("body") {
+                    return Some(child.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn element_local_name(handle: &Handle) -> Option<&str> {
+    match &handle.0.data {
+        SinkData::Element { name, .. } => Some(name.local.as_ref()),
+        _ => None,
     }
 }
 
@@ -352,19 +380,15 @@ impl TreeSink for FragmentSink {
     }
 }
 
-/// Parse an HTML fragment string into an [`HtmlFragment`] using a custom TreeSink.
+/// Parse an HTML string into an [`HtmlFragment`] using a custom TreeSink.
+///
+/// Uses a full document parse (like frostmark) so block wrappers such as
+/// `<div align="center">` are not merged away by fragment-context adoption.
 pub fn parse_html_fragment(html: &str) -> Result<HtmlFragment, HtmlFragmentError> {
-    use html5ever::{local_name, ns, ParseOpts, QualName, tendril::TendrilSink};
+    use html5ever::{ParseOpts, tendril::TendrilSink};
 
     let sink = FragmentSink::new();
-    let fragment = html5ever::parse_fragment(
-        sink,
-        ParseOpts::default(),
-        QualName::new(None, ns!(html), local_name!("div")),
-        vec![],
-        true,
-    )
-    .one(html);
+    let fragment = html5ever::parse_document(sink, ParseOpts::default()).one(html);
     Ok(fragment)
 }
 
@@ -378,6 +402,25 @@ mod tests {
             HtmlNode::Element { tag, .. } => tag.as_str(),
             other => panic!("expected element, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn treesink_preserves_div_align_attribute() {
+        use crate::html::preprocess::normalize_legacy_alignment_wrappers;
+        let html = normalize_legacy_alignment_wrappers("<div align=\"center\"><h1>Title</h1></div>");
+        let fragment = parse_html_fragment(html.as_ref()).expect("parse");
+        assert!(
+            fragment
+                .roots()
+                .iter()
+                .any(|&r| tag(&fragment, r) == "center"),
+            "roots: {:?}",
+            fragment
+                .roots()
+                .iter()
+                .map(|&r| tag(&fragment, r))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]

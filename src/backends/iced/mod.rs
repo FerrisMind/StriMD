@@ -13,7 +13,7 @@ pub use code_fence::{fence_markdown_for_codeblock, iced_markdown_items_for_codeb
 pub use legacy_document::{CodeBlock, MarkDocument, MarkSegment};
 pub use state::MarkState;
 pub use structs::{ImageInfo, MarkWidget, RubyMode, UpdateMsg};
-pub use style::Style;
+pub use style::{Style, DEFAULT_INLINE_CODE_BACKGROUND, DEFAULT_INLINE_CODE_FOREGROUND};
 
 #[cfg(feature = "static")]
 pub use crate::core::document::markdown_to_html;

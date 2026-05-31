@@ -19,3 +19,11 @@ pub struct Style {
     /// Background color for block `<pre><code>` sections.
     pub code_block_background: Option<iced::Color>,
 }
+
+/// Subtle inline-code pill background (readable on light and dark UI chrome).
+pub const DEFAULT_INLINE_CODE_BACKGROUND: iced::Color =
+    iced::Color::from_rgba8(100, 106, 120, 0.16);
+
+/// Neutral inline-code text when no [`Style::inline_code_color`] is set (markdown path).
+pub const DEFAULT_INLINE_CODE_FOREGROUND: iced::Color =
+    iced::Color::from_rgb8(0x58, 0x60, 0x6E);
