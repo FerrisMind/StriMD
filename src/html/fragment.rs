@@ -68,6 +68,8 @@ impl HtmlFragment {
         if html.is_empty() {
             return Self::empty();
         }
+        let html = crate::html::preprocess::preprocess_raw_html(html);
+        let html = html.as_ref();
         #[cfg(feature = "static")]
         {
             if let Ok(fragment) = crate::html::treesink::parse_html_fragment(html)
@@ -88,7 +90,8 @@ impl HtmlFragment {
         if html.is_empty() {
             return Ok(Self::empty());
         }
-        crate::html::treesink::parse_html_fragment(html)
+        let html = crate::html::preprocess::preprocess_raw_html(html);
+        crate::html::treesink::parse_html_fragment(html.as_ref())
     }
 
     #[must_use]

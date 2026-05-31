@@ -82,3 +82,11 @@ required-features = ["_iced_backend", "iced/image", "iced/tokio"]
 [[example]]
 name = "large_readme"
 required-features = ["_iced_backend", "iced/image", "iced/tokio", "iced/svg"]
+
+[[example]]
+name = "static_export"
+required-features = ["no_iced", "static"]
+
+[[example]]
+name = "stream_chat"
+required-features = ["no_iced", "stream"]

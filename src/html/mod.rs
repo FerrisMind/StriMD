@@ -1,4 +1,5 @@
 pub mod fragment;
+pub mod preprocess;
 pub mod sanitize;
 
 #[cfg(feature = "static")]
