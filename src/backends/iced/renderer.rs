@@ -1,5 +1,5 @@
 use iced::{Element, Font, Length, Padding, Pixels, border, padding, widget};
-use iced::widget::markdown::{self, Uri as MarkdownUri};
+use iced::widget::markdown::{self};
 
 use crate::html::block_cache::CachedBlock;
 
@@ -104,6 +104,9 @@ where
                         .and_then(|n| n.highlight_color)
                         .unwrap_or_else(|| iced::Color::from_rgb8(0xF7, 0xD8, 0x4B));
                     t = t.background(highlight_color);
+                }
+                if let Some(color) = self.style.and_then(|s| s.text_color) {
+                    t = t.color(color);
                 }
                 t
             }]);
@@ -683,15 +686,31 @@ where
                 _ => None,
             }) {
             let settings = self.markdown_code_settings();
-            // Links inside fenced code are rare; avoid capturing `&self` in the closure
-            // so the returned `Element` can live for `'a` (cache-backed `lines`).
-            let element = markdown::code_block(settings, lines, |_: MarkdownUri| -> M {
-                panic!("unexpected link in fenced code block");
-            });
+            // Same layout as `iced::widget::markdown::code_block` (without horizontal scroll).
+            let inner = widget::container(
+                widget::column(
+                    lines
+                        .iter()
+                        .map(|line| {
+                            widget::rich_text(line.spans(settings.style))
+                                .font(settings.style.code_block_font)
+                                .size(settings.code_size)
+                                .width(Length::Fill)
+                                .into()
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .spacing(Pixels(0.0)),
+            )
+            .padding(settings.code_size);
+            let block = widget::container(inner)
+                .width(Length::Fill)
+                .padding(settings.code_size / 4.0)
+                .class(<T as markdown::Catalog>::code_block());
             let element = if let Some(draw) = &self.fn_drawing_pre_block {
-                draw(element)
+                draw(block.into())
             } else {
-                element
+                block.into()
             };
             return element.into();
         }

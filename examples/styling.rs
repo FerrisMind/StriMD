@@ -1,36 +1,41 @@
-use strimd::{MarkState, MarkWidget};
+use strimd::{MarkState, MarkWidget, Style};
 use iced::{Element, Task, widget};
 
 #[derive(Debug, Clone)]
-enum Message {}
+enum Message {
+    OpenLink(String),
+}
 
 struct App {
     state: MarkState,
 }
 
 impl App {
-    fn update(&mut self, _: Message) -> Task<Message> {
-        Task::none()
+    fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::OpenLink(url) => {
+                let _ = open::that(url);
+                Task::none()
+            }
+        }
     }
 
     fn view(&self) -> Element<'_, Message> {
         widget::container(
             MarkWidget::new(&self.state)
+                .on_clicking_link(Message::OpenLink)
                 .style_link_button(|t, s| {
-                    // Styles link buttons to look like text links
+                    // Link buttons (non-span link content) styled as text links.
                     widget::button::text(t, s)
                 })
-                .style(strimd::Style {
-                    // Example colors
-                    text_color: Some(iced::Color::from_rgb8(255, 0, 0)),
-                    link_color: Some(iced::Color::from_rgb8(255, 0, 255)),
-                    highlight_color: Some(iced::Color::from_rgb8(0, 255, 0)),
-                    inline_code_background: None,
-                    inline_code_color: None,
-                    code_block_background: None,
+                .style(Style {
+                    text_color: Some(iced::Color::from_rgb8(220, 40, 40)),
+                    link_color: Some(iced::Color::from_rgb8(200, 0, 200)),
+                    highlight_color: Some(iced::Color::from_rgb8(0, 200, 80)),
+                    inline_code_background: Some(iced::Color::from_rgb8(40, 40, 48)),
+                    inline_code_color: Some(iced::Color::from_rgb8(180, 220, 255)),
+                    code_block_background: Some(iced::Color::from_rgb8(32, 32, 40)),
                 })
-                // Difference between link buttons and link text:
-                // Link buttons are links with non-text content (eg: images)
                 .paragraph_spacing(20.0),
         )
         .padding(10)
@@ -41,7 +46,7 @@ impl App {
 fn main() {
     iced::application(
         || App {
-            state: MarkState::with_html_and_markdown(YOUR_TEXT),
+            state: MarkState::with_html_and_markdown(STYLING_TEXT),
         },
         App::update,
         App::view,
@@ -50,14 +55,4 @@ fn main() {
     .unwrap();
 }
 
-const YOUR_TEXT: &str = r#"
-This text will be red
-
-[This text will be purple](https://example.com)
-
-<mark>This text will be highlighted green</mark>
-
-Lots of spacing, hmm? That's done using .paragraph_spacing(20.0)
-
-[<div>This text is styled using .style_link_button()</div>]()
-"#;
+const STYLING_TEXT: &str = include_str!("fixtures/styling.md");
