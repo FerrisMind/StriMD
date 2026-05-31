@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use mdstream::adapters::pulldown::{PulldownAdapter, PulldownAdapterOptions};
@@ -64,6 +65,7 @@ pub struct StreamDocument {
     stream: MdStream,
     adapter: PulldownAdapter,
     blocks: Vec<RenderBlock>,
+    block_index: HashMap<BlockId, usize>,
     pending: Option<RenderBlock>,
     profile: ParseProfile,
     raw_html: crate::options::RawHtmlPolicy,
@@ -82,6 +84,7 @@ impl StreamDocument {
                 prefer_display_for_pending: prefer_display,
             }),
             blocks: Vec::new(),
+            block_index: HashMap::new(),
             pending: None,
             profile: options.profile,
             raw_html: parse_options.raw_html,
@@ -105,6 +108,7 @@ impl StreamDocument {
         self.stream.reset();
         self.adapter.clear();
         self.blocks.clear();
+        self.block_index.clear();
         self.pending = None;
         self.next_id = 1;
     }
@@ -120,6 +124,14 @@ impl StreamDocument {
         self.pending.as_ref()
     }
 
+    #[cfg(feature = "stream")]
+    #[allow(dead_code)]
+    pub(crate) fn committed_block(&self, id: BlockId) -> Option<&RenderBlock> {
+        self.block_index
+            .get(&id)
+            .and_then(|&index| self.blocks.get(index))
+    }
+
     /// Parse profile used by this stream.
     #[must_use]
     pub fn profile(&self) -> ParseProfile {
@@ -130,6 +142,7 @@ impl StreamDocument {
         if update.reset {
             self.adapter.clear();
             self.blocks.clear();
+            self.block_index.clear();
             self.pending = None;
             return StreamUpdate {
                 patch: StreamPatch::ClearAndRebuild,
@@ -144,6 +157,7 @@ impl StreamDocument {
         for block in &update.committed {
             let render = self.mdstream_block_to_render(block, BlockStatus::Committed);
             appended.push(render.id);
+            self.block_index.insert(render.id, self.blocks.len());
             self.blocks.push(render);
         }
 
@@ -154,25 +168,23 @@ impl StreamDocument {
             .collect();
 
         for id in &update.invalidated {
-            let md_id = *id;
-            if let Some(events) = self.adapter.committed_events(md_id) {
-                let source = Arc::<str>::from(
-                    self.blocks
-                        .iter()
-                        .find(|b| b.id.0 == md_id.0)
-                        .map(|b| b.source.as_ref())
-                        .unwrap_or(""),
-                );
-                let kind = self
-                    .blocks
-                    .iter()
-                    .find(|b| b.id.0 == md_id.0)
-                    .map(|b| b.kind)
-                    .unwrap_or(BlockKind::Unknown);
-                let content = self.committed_content(source, events.to_vec(), kind);
-                if let Some(existing) = self.blocks.iter_mut().find(|b| b.id.0 == md_id.0) {
-                    existing.content = content;
-                }
+            let render_id = BlockId::new(id.0);
+            let Some(&index) = self.block_index.get(&render_id) else {
+                continue;
+            };
+            let Some(events) = self.adapter.committed_events(*id) else {
+                continue;
+            };
+            let Some((source, kind)) = self
+                .blocks
+                .get(index)
+                .map(|existing| (existing.source.clone(), existing.kind))
+            else {
+                continue;
+            };
+            let content = self.committed_content(source, events.to_vec(), kind);
+            if let Some(existing) = self.blocks.get_mut(index) {
+                existing.content = content;
             }
         }
 

@@ -83,6 +83,28 @@ impl MarkState {
         let mut cache = BlockRenderCache::default();
         cache.sync_from_stream(stream);
         self.cache = Some(cache);
+        self.rebuild_dropdown_state();
+    }
+
+    /// Apply an incremental streaming update while preserving existing cache entries where possible.
+    #[cfg(feature = "stream")]
+    pub fn apply_stream_update(
+        &mut self,
+        stream: &StreamDocument,
+        update: &crate::core::StreamUpdate,
+    ) {
+        if let Some(cache) = &mut self.cache {
+            cache.apply_stream_update(stream, update);
+        } else {
+            let mut cache = BlockRenderCache::default();
+            cache.sync_from_stream(stream);
+            self.cache = Some(cache);
+        }
+        self.rebuild_dropdown_state();
+    }
+
+    #[cfg(feature = "stream")]
+    fn rebuild_dropdown_state(&mut self) {
         self.dropdown_state.clear();
         let mut dropdown_counter = 0;
         if let Some(cache) = &self.cache {

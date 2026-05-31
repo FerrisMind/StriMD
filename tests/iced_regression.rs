@@ -30,14 +30,13 @@ fn streamed_gfm_table_syncs_to_mark_state() {
 
     let source = include_str!("fixtures/stream_table.md");
     let mut stream = StreamDocument::new(StreamOptions::chat());
+    let mut state = MarkState::from_blocks(&[]);
     for chunk in source.as_bytes().chunks(5) {
-        stream.append(std::str::from_utf8(chunk).unwrap_or(""));
+        let update = stream.append(std::str::from_utf8(chunk).unwrap_or(""));
+        state.apply_stream_update(&stream, &update);
     }
     assert!(
         stream.blocks().any(|b| b.kind == BlockKind::Table)
             || stream.pending().is_some_and(|p| p.kind == BlockKind::Table)
     );
-
-    let mut state = MarkState::from_blocks(&[]);
-    state.sync_from_stream(&stream);
 }
