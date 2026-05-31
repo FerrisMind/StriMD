@@ -6,6 +6,7 @@ use mdstream::{FootnotesMode, MdStream, Options as MdstreamOptions, ReferenceDef
 use crate::core::block::{BlockContent, BlockKind, BlockStatus, CompiledMarkdown, RenderBlock};
 use crate::core::ids::BlockId;
 use crate::options::ParseOptions;
+use crate::parse::content::{block_content_from_events, events_contain_html, html_block_content};
 use crate::profile::ParseProfile;
 
 /// How pending blocks choose display vs raw source text.
@@ -160,11 +161,15 @@ impl StreamDocument {
                         .map(|b| b.source.as_ref())
                         .unwrap_or(""),
                 );
+                let kind = self
+                    .blocks
+                    .iter()
+                    .find(|b| b.id.0 == md_id.0)
+                    .map(|b| b.kind)
+                    .unwrap_or(BlockKind::Unknown);
+                let content = self.committed_content(source, events.to_vec(), kind);
                 if let Some(existing) = self.blocks.iter_mut().find(|b| b.id.0 == md_id.0) {
-                    existing.content = BlockContent::Markdown(CompiledMarkdown::new(
-                        source,
-                        events.to_vec(),
-                    ));
+                    existing.content = content;
                 }
             }
         }
@@ -212,11 +217,10 @@ impl StreamDocument {
         let source_text = block.display_or_raw();
         let source = Arc::<str>::from(source_text);
         let kind = mdstream_kind_to_frostmark(block.kind);
-        let content = if let Some(events) = self.adapter.committed_events(block.id) {
-            BlockContent::Markdown(CompiledMarkdown::new(
-                source.clone(),
-                events.to_vec(),
-            ))
+        let content = if block.kind == mdstream::BlockKind::HtmlBlock {
+            html_block_content(source.clone())
+        } else if let Some(events) = self.adapter.committed_events(block.id) {
+            self.committed_content(source.clone(), events.to_vec(), kind)
         } else if block.kind == mdstream::BlockKind::CodeFence {
             BlockContent::Code {
                 lang: block.code_fence_language().map(str::to_string),
@@ -232,6 +236,19 @@ impl StreamDocument {
             kind,
             source,
             content,
+        }
+    }
+
+    fn committed_content(
+        &self,
+        source: Arc<str>,
+        events: Vec<pulldown_cmark::Event<'static>>,
+        kind: BlockKind,
+    ) -> BlockContent {
+        if kind == BlockKind::HtmlBlock || events_contain_html(&events) {
+            block_content_from_events(&events, source)
+        } else {
+            BlockContent::Markdown(CompiledMarkdown::new(source, events))
         }
     }
 }
@@ -275,5 +292,45 @@ mod tests {
         assert!(!update.reset);
         assert!(doc.blocks().count() >= 1 || doc.pending().is_some());
         let _ = update;
+    }
+
+    #[test]
+    fn streamed_html_block_routes_to_fragment() {
+        let mut doc = StreamDocument::new(StreamOptions::chat());
+        doc.append("<details><summary>open</summary></details>\n\n");
+        let block = doc
+            .blocks()
+            .find(|b| b.kind == BlockKind::HtmlBlock)
+            .expect("html block");
+        assert!(matches!(block.content, BlockContent::Html(_)));
+    }
+
+    #[test]
+    fn streamed_inline_html_is_chunk_invariant() {
+        let whole = {
+            let mut doc = StreamDocument::new(StreamOptions::chat());
+            doc.append("text <span>x</span> and more.\n\n");
+            doc.blocks()
+                .last()
+                .or_else(|| doc.pending())
+                .expect("block")
+                .content
+                .clone()
+        };
+        let chunked = {
+            let mut doc = StreamDocument::new(StreamOptions::chat());
+            doc.append("text <span>x</span>");
+            doc.append(" and more.\n\n");
+            doc.blocks()
+                .last()
+                .or_else(|| doc.pending())
+                .expect("block")
+                .content
+                .clone()
+        };
+        assert_eq!(
+            std::mem::discriminant(&whole),
+            std::mem::discriminant(&chunked)
+        );
     }
 }

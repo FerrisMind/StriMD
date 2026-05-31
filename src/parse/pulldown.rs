@@ -3,12 +3,12 @@ use std::sync::Arc;
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 
 use crate::core::block::{
-    BlockContent, BlockKind, BlockStatus, CompiledMarkdown, RenderBlock,
+    BlockContent, BlockKind, BlockStatus, RenderBlock,
 };
 use crate::core::error::ParseError;
 use crate::core::ids::BlockId;
-use crate::html::fragment::HtmlFragment;
 use crate::options::ParseOptions;
+use crate::parse::content::block_content_from_events;
 use crate::profile::ParseProfile;
 
 /// Collect pulldown events into backend-agnostic [`RenderBlock`] values.
@@ -42,7 +42,7 @@ fn group_events_into_blocks(
         let end = index + end.max(1);
         let slice = &events[index..end];
         let block_source = Arc::<str>::from(event_slice_source(source, slice));
-        let content = block_content_for_slice(slice, block_source.clone());
+        let content = block_content_from_events(slice, block_source.clone());
 
         blocks.push(RenderBlock {
             id: BlockId::new(next_id),
@@ -61,7 +61,7 @@ fn group_events_into_blocks(
             status: BlockStatus::Committed,
             kind: BlockKind::Paragraph,
             source: source_arc.clone(),
-            content: BlockContent::Markdown(CompiledMarkdown::new(
+            content: BlockContent::Markdown(crate::core::block::CompiledMarkdown::new(
                 source_arc,
                 events,
             )),
@@ -69,27 +69,6 @@ fn group_events_into_blocks(
     }
 
     blocks
-}
-
-fn block_content_for_slice(
-    slice: &[Event<'static>],
-    source: Arc<str>,
-) -> BlockContent {
-    for event in slice {
-        match event {
-            Event::Html(html) | Event::InlineHtml(html) => {
-                return BlockContent::Html(HtmlFragment::from_html(html));
-            }
-            _ => {}
-        }
-    }
-    if slice
-        .first()
-        .is_some_and(|e| matches!(e, Event::Start(Tag::HtmlBlock)))
-    {
-        return BlockContent::Html(HtmlFragment::from_html(&source));
-    }
-    BlockContent::Markdown(CompiledMarkdown::new(source, slice.to_vec()))
 }
 
 fn classify_block_start(events: &[Event<'static>]) -> (BlockKind, usize) {

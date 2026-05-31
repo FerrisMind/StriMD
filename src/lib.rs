@@ -37,6 +37,8 @@ pub use core::{
     BlockContent, BlockId, BlockKind, BlockStatus, CompiledMarkdown, Document, HtmlFragmentError,
     ParseError, RenderBlock, RenderError, UnsupportedReason,
 };
+#[cfg(feature = "_legacy_comrak")]
+pub use core::LegacyFallbackReport;
 pub use options::{LegacyFallbackPolicy, ParseOptions, RawHtmlPolicy};
 pub use profile::ParseProfile;
 

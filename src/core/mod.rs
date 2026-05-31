@@ -13,6 +13,9 @@ pub use document::Document;
 pub use error::{HtmlFragmentError, ParseError, RenderError, UnsupportedReason};
 pub use ids::BlockId;
 
+#[cfg(feature = "_legacy_comrak")]
+pub use crate::parse::legacy_fallback::LegacyFallbackReport;
+
 #[cfg(feature = "stream")]
 pub use stream_document::{
     PendingPolicy, StreamDocument, StreamOptions, StreamPatch, StreamUpdate,
