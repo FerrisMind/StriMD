@@ -2,6 +2,7 @@
 
 #[cfg(feature = "_legacy_comrak")]
 mod legacy_document;
+mod dom;
 pub mod renderer;
 mod state;
 mod structs;

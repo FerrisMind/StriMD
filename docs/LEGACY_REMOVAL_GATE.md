@@ -15,8 +15,9 @@ Do **not** remove `_legacy_comrak` or `_rcdom_compat` until every item below is 
 
 - [x] `tests/html_fragment_parity.rs` passes for all supported HTML fixtures
 - [x] `tests/static_parity.rs` raw HTML fixtures pass with TreeSink-only path
-- [ ] Iced renderer uses `HtmlFragment` traversal without `RcDom` in production (`tests/iced_regression.rs` green; block cache still compiles to RcDom)
-- [ ] `rg "markup5ever_rcdom|RcDom" src Cargo.toml` returns only test remnants or none
+- [x] Iced renderer uses `HtmlFragment` traversal without `RcDom` in production (`BlockRenderCache` stores `HtmlFragment`; `DomRef` walks fragment arena)
+- [x] `_iced_backend` no longer enables `_rcdom_compat` / `markup5ever_rcdom` (parity tests still use `_rcdom_compat` explicitly)
+- [ ] `rg "markup5ever_rcdom|RcDom" src` returns only `_rcdom_compat` / test-only modules (rcdom_compat.rs, treesink parity test)
 - [ ] Table/details/image fixtures pass for static and streaming paths
 
 ## Commands

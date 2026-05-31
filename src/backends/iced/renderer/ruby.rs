@@ -1,9 +1,9 @@
 use iced::widget;
-use markup5ever_rcdom::{Node, NodeData};
 
 use crate::backends::iced::{
     MarkWidget, RubyMode,
-    renderer::{ValidTheme, is_node_useless},
+    dom::DomRef,
+    renderer::ValidTheme,
     structs::{ChildData, Emp, RenderedSpan},
 };
 
@@ -25,90 +25,74 @@ impl<'a, M: Clone + 'static, T: ValidTheme + 'a> MarkWidget<'a, M, T>
 where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
 {
-    pub(crate) fn draw_ruby(&mut self, node: &Node, data: ChildData) -> RenderedSpan<'a, M, T> {
+    pub(crate) fn draw_ruby(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
         let units = self.ruby_collect_units(node, data);
-
         self.draw_ruby_units(units)
     }
 
     fn draw_ruby_units(&mut self, units: Vec<RubyUnit<'a, M, T>>) -> RenderedSpan<'a, M, T> {
         match self.ruby_mode {
-            RubyMode::Ignore => {
-                // only base content
-                units
+            RubyMode::Ignore => units
+                .into_iter()
+                .fold(RenderedSpan::None, |acc, u| acc + u.base),
+
+            RubyMode::Fallback => units.into_iter().fold(RenderedSpan::None, |acc, u| {
+                let ann = u
+                    .annotations
                     .into_iter()
-                    .fold(RenderedSpan::None, |acc, u| acc + u.base)
-            }
+                    .fold(RenderedSpan::None, |a, b| a + b);
+                acc + u.base + ann
+            }),
 
-            RubyMode::Fallback => {
-                // inline concat: base + annotations
-                units.into_iter().fold(RenderedSpan::None, |acc, u| {
-                    let ann = u
-                        .annotations
-                        .into_iter()
-                        .fold(RenderedSpan::None, |a, b| a + b);
-                    acc + u.base + ann
-                })
-            }
+            RubyMode::Full => units.into_iter().fold(RenderedSpan::None, |acc, u| {
+                let ann_block = u
+                    .annotations
+                    .into_iter()
+                    .fold(RenderedSpan::None, |a, b| a + b);
 
-            RubyMode::Full => {
-                // each unit is annotation above base
-                units.into_iter().fold(RenderedSpan::None, |acc, u| {
-                    let ann_block = u
-                        .annotations
-                        .into_iter()
-                        .fold(RenderedSpan::None, |a, b| a + b);
+                let unit = RenderedSpan::Elem(
+                    widget::column![ann_block.render(), u.base.render()]
+                        .align_x(iced::Alignment::Center)
+                        .into(),
+                    Emp::NonEmpty,
+                );
 
-                    let unit = RenderedSpan::Elem(
-                        widget::column![ann_block.render(), u.base.render()]
-                            .align_x(iced::Alignment::Center)
-                            .into(),
-                        Emp::NonEmpty,
-                    );
-
-                    acc + unit
-                })
-            }
+                acc + unit
+            }),
         }
     }
 
-    fn ruby_collect_units(&mut self, node: &Node, data: ChildData) -> Vec<RubyUnit<'a, M, T>> {
+    fn ruby_collect_units(&mut self, node: DomRef<'_>, data: ChildData) -> Vec<RubyUnit<'a, M, T>> {
         let mut units: Vec<RubyUnit<'a, M, T>> = Vec::new();
         let mut current = RubyUnit::default();
 
-        for child in node.children.borrow().iter() {
-            if is_node_useless(child) {
+        for child in node.children() {
+            if child.is_useless() {
                 continue;
             }
 
-            match &child.data {
-                NodeData::Element { name, .. } if &*name.local == "rb" => {
-                    // flush previous
+            match child.tag_name() {
+                Some("rb") => {
                     if !matches!(current.base, RenderedSpan::None) {
                         units.push(current);
                         current = RubyUnit::default();
                     }
-
                     current.base = self.render_children(child, data);
                 }
-                NodeData::Element { name, .. } if &*name.local == "rt" => {
-                    current.annotations.push(self.traverse_node(child, data));
+                Some("rt") => {
+                    current.annotations.push(self.traverse_dom(child, data));
                 }
-                NodeData::Element { name, .. } if &*name.local == "rp" => {}
-
+                Some("rp") => {}
                 _ => {
-                    // implicit base
                     if !matches!(current.base, RenderedSpan::None) {
                         units.push(current);
                         current = RubyUnit::default();
                     }
-
-                    current.base = self.traverse_node(child, data);
+                    current.base = self.traverse_dom(child, data);
                 }
             }
         }
 
-        // flush last unit
         if !matches!(current.base, RenderedSpan::None) {
             units.push(current);
         }

@@ -1,9 +1,9 @@
 use iced::{Element, Font, Length, Padding, Pixels, border, widget};
-use markup5ever_rcdom::{Node, NodeData};
 
 use crate::html::block_cache::CachedBlock;
 
 use super::{
+    dom::{self, DomRef},
     structs::{
         ChildAlignment, ChildData, ChildDataFlags, ImageInfo, MarkWidget, RenderedSpan, UpdateMsg,
         UpdateMsgKind,
@@ -11,6 +11,7 @@ use super::{
     widgets::{link, link_text, underline},
 };
 use crate::html::block_cache::CachedCodeBlock;
+use crate::html::fragment::HtmlFragment;
 
 mod ruby;
 mod table;
@@ -35,95 +36,91 @@ impl<'a, M: Clone + 'static, T: ValidTheme + 'a> MarkWidget<'a, M, T>
 where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
 {
-    pub(crate) fn traverse_node(&mut self, node: &Node, data: ChildData) -> RenderedSpan<'a, M, T> {
-        match &node.data {
-            markup5ever_rcdom::NodeData::Document => self.render_children(node, data),
-
-            markup5ever_rcdom::NodeData::Text { contents } => {
-                fn calc_size(text_size: f32, scaling: f32, factor: f32) -> f32 {
-                    text_size * (1.0 + ((scaling - 1.0) * factor))
-                }
-
-                let text = contents.borrow();
-                let weight = data.heading_weight;
-                let scaling = match weight {
-                    1 => 1.8,
-                    2 => 1.5,
-                    3 => 1.25,
-                    4 => 1.15,
-                    5 => 0.875,
-                    6 => 0.75,
-                    7 => 0.625,
-                    _ => 1.0,
-                };
-                let size = calc_size(self.text_size, scaling, self.heading_scale);
-
-                if data.flags.contains(ChildDataFlags::MONOSPACE) {
-                    self.codeblock(
-                        text.to_string(),
-                        size,
-                        !data.flags.contains(ChildDataFlags::KEEP_WHITESPACE),
-                    )
-                } else {
-                    let mut t =
-                        widget::span(if data.flags.contains(ChildDataFlags::KEEP_WHITESPACE) {
-                            text.to_string()
-                        } else {
-                            clean_whitespace(&text)
-                        })
-                        .size(size);
-
-                    RenderedSpan::Spans(vec![{
-                        t = t.font({
-                            let mut f = self.font;
-                            if data.flags.contains(ChildDataFlags::BOLD) {
-                                f.weight = iced::font::Weight::Bold;
-                            }
-                            if data.flags.contains(ChildDataFlags::ITALIC) {
-                                f.style = iced::font::Style::Italic;
-                            }
-                            f
-                        });
-                        if data.flags.contains(ChildDataFlags::STRIKETHROUGH) {
-                            t = t.strikethrough(true);
-                        }
-                        if data.flags.contains(ChildDataFlags::UNDERLINE) {
-                            t = t.underline(true);
-                        }
-                        if data.flags.contains(ChildDataFlags::HIGHLIGHT) {
-                            let highlight_color = self
-                                .style
-                                .and_then(|n| n.highlight_color)
-                                .unwrap_or_else(|| iced::Color::from_rgb8(0xF7, 0xD8, 0x4B));
-                            t = t.background(highlight_color);
-                        }
-                        t
-                    }])
-                }
-            }
-            markup5ever_rcdom::NodeData::Element { name, attrs, .. } => {
-                self.render_html_inner(name, attrs, node, data)
-            }
-            _ => RenderedSpan::None,
+    pub(crate) fn traverse_dom(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
+        if node.is_document_root() {
+            return self.render_children(node, data);
         }
+
+        if let Some(text) = node.text_contents() {
+            fn calc_size(text_size: f32, scaling: f32, factor: f32) -> f32 {
+                text_size * (1.0 + ((scaling - 1.0) * factor))
+            }
+
+            let weight = data.heading_weight;
+            let scaling = match weight {
+                1 => 1.8,
+                2 => 1.5,
+                3 => 1.25,
+                4 => 1.15,
+                5 => 0.875,
+                6 => 0.75,
+                7 => 0.625,
+                _ => 1.0,
+            };
+            let size = calc_size(self.text_size, scaling, self.heading_scale);
+
+            if data.flags.contains(ChildDataFlags::MONOSPACE) {
+                return self.codeblock(
+                    text.into_owned(),
+                    size,
+                    !data.flags.contains(ChildDataFlags::KEEP_WHITESPACE),
+                );
+            }
+
+            let display = if data.flags.contains(ChildDataFlags::KEEP_WHITESPACE) {
+                text.into_owned()
+            } else {
+                clean_whitespace(&text)
+            };
+
+            let mut t = widget::span(display).size(size);
+            return RenderedSpan::Spans(vec![{
+                t = t.font({
+                    let mut f = self.font;
+                    if data.flags.contains(ChildDataFlags::BOLD) {
+                        f.weight = iced::font::Weight::Bold;
+                    }
+                    if data.flags.contains(ChildDataFlags::ITALIC) {
+                        f.style = iced::font::Style::Italic;
+                    }
+                    f
+                });
+                if data.flags.contains(ChildDataFlags::STRIKETHROUGH) {
+                    t = t.strikethrough(true);
+                }
+                if data.flags.contains(ChildDataFlags::UNDERLINE) {
+                    t = t.underline(true);
+                }
+                if data.flags.contains(ChildDataFlags::HIGHLIGHT) {
+                    let highlight_color = self
+                        .style
+                        .and_then(|n| n.highlight_color)
+                        .unwrap_or_else(|| iced::Color::from_rgb8(0xF7, 0xD8, 0x4B));
+                    t = t.background(highlight_color);
+                }
+                t
+            }]);
+        }
+
+        if let Some(name) = node.tag_name() {
+            return self.render_html_inner(name, node, data);
+        }
+
+        RenderedSpan::None
     }
 
     fn render_html_inner(
         &mut self,
-        name: &html5ever::QualName,
-        attrs: &std::cell::RefCell<Vec<html5ever::Attribute>>,
-        node: &Node,
+        name: &str,
+        node: DomRef<'_>,
         mut data: ChildData,
     ) -> RenderedSpan<'a, M, T> {
-        let name = name.local.to_string();
-        let attrs = attrs.borrow();
-
-        let block_element = is_block_element(node);
+        let block_element = node.is_block_element();
         if block_element {
-            alignment_read(&mut data, &attrs);
+            dom::alignment_read(&mut data, node);
         }
 
-        let e = match name.as_str() {
+        let e = match name {
             "summary" | "kbd" | "span" | "html" | "body" | "p" | "div" | "thead" | "tbody"
             | "tfoot" => self.render_children(node, data),
 
@@ -161,8 +158,8 @@ where
             "mark" => self.render_children(node, data.insert(ChildDataFlags::HIGHLIGHT)),
 
             "details" => self.draw_details(node, data),
-            "a" => self.draw_link(node, &attrs, data),
-            "img" => self.draw_image(&attrs),
+            "a" => self.draw_link(node, data),
+            "img" => self.draw_image(node),
 
             "br" => {
                 if data.flags.contains(ChildDataFlags::INSIDE_RUBY) {
@@ -174,9 +171,9 @@ where
             "hr" => widget::rule::horizontal(1.0).into(),
             "head" | "title" | "meta" | "rtc" | "rp" | "rb" => RenderedSpan::None,
 
-            "input" => match get_attr(&attrs, "type").unwrap_or("text") {
+            "input" => match node.get_attr("type").as_deref().unwrap_or("text") {
                 "checkbox" => {
-                    let checked = attrs.iter().any(|attr| &*attr.name.local == "checked");
+                    let checked = node.get_attr("checked").is_some();
                     widget::checkbox(checked).into()
                 }
                 kind => RenderedSpan::Spans(vec![
@@ -192,7 +189,8 @@ where
                 self.render_list(node, data)
             }
             "ol" => {
-                let start = get_attr(&attrs, "start")
+                let start = node
+                    .get_attr("start")
                     .and_then(|n| n.parse::<usize>().ok())
                     .unwrap_or(1);
                 self.render_list(node, data.ordered_from(start))
@@ -219,7 +217,7 @@ where
         }
     }
 
-    fn draw_details(&mut self, node: &Node, data: ChildData) -> RenderedSpan<'a, M, T> {
+    fn draw_details(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
         let e = if let (Some(update), Some(state)) = (
             self.fn_update.clone(),
             self.state
@@ -276,42 +274,41 @@ where
         e
     }
 
-    fn get_summary_elements(&mut self, node: &Node, data: ChildData) -> RenderedSpan<'a, M, T> {
-        node.children
-            .borrow()
-            .iter()
-            .find(|elem| {
-                if let NodeData::Element { name, .. } = &elem.data {
-                    &*name.local == "summary"
-                } else {
-                    false
-                }
-            })
-            .map(|n| self.traverse_node(n, data))
+    fn get_summary_elements(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
+        node.children()
+            .into_iter()
+            .find(|child| child.tag_name() == Some("summary"))
+            .map(|child| self.traverse_dom(child, data))
             .unwrap_or_default()
     }
 
-    fn draw_image(&self, attrs: &[html5ever::Attribute]) -> RenderedSpan<'a, M, T> {
-        if let Some(attr) = attrs.iter().find(|attr| &*attr.name.local == "src") {
-            let url = &*attr.value;
-
-            let width = get_attr_num(attrs, "width");
-            let height = get_attr_num(attrs, "height");
-
-            if let Some(func) = self.fn_drawing_image.as_deref() {
-                return func(ImageInfo { url, width, height }).into();
-            }
+    fn draw_image(&self, node: DomRef<'_>) -> RenderedSpan<'a, M, T> {
+        let Some(url) = node.get_attr("src") else {
+            return RenderedSpan::None;
+        };
+        if url.is_empty() {
+            return RenderedSpan::None;
         }
-        // Error, no `src` tag in `<img>`
+
+        let width = node
+            .get_attr("width")
+            .and_then(|n| n.parse::<f32>().ok());
+        let height = node
+            .get_attr("height")
+            .and_then(|n| n.parse::<f32>().ok());
+
+        if let Some(func) = self.fn_drawing_image.as_deref() {
+            return func(ImageInfo {
+                url: &url,
+                width,
+                height,
+            })
+            .into();
+        }
         RenderedSpan::None
     }
 
-    fn draw_link(
-        &mut self,
-        node: &Node,
-        attrs: &std::cell::Ref<'_, Vec<html5ever::Attribute>>,
-        data: ChildData,
-    ) -> RenderedSpan<'a, M, T> {
+    fn draw_link(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
         let link_col = self
             .style
             .and_then(|n| n.link_color)
@@ -319,13 +316,8 @@ where
 
         let children = self.render_children(node, data);
 
-        if let Some(attr) = attrs
-            .iter()
-            .find(|attr| attr.name.local.to_string().as_str() == "href")
-        {
-            let url = attr.value.to_string();
-            let children_empty = { node.children.borrow().is_empty() };
-
+        if let Some(url) = node.get_attr("href") {
+            let children_empty = node.children().is_empty();
             let msg = self.fn_clicking_link.as_ref();
 
             if children_empty {
@@ -365,12 +357,15 @@ where
     }
 
     fn e(_: String) -> M {
-        // This will never run, don't worry
         panic!()
     }
 
-    fn render_children(&mut self, node: &Node, data: ChildData) -> RenderedSpan<'a, M, T> {
-        let children = node.children.borrow();
+    pub(crate) fn render_children(
+        &mut self,
+        node: DomRef<'_>,
+        data: ChildData,
+    ) -> RenderedSpan<'a, M, T> {
+        let children = node.children();
 
         let mut column = Vec::new();
         let mut row = RenderedSpan::None;
@@ -379,18 +374,15 @@ where
         let original_start = data.li_ordered_number;
 
         let mut i = 0;
-        for item in children.iter() {
-            if is_node_useless(item) {
+        for item in children {
+            if item.is_useless() {
                 continue;
             }
 
-            if let NodeData::Element { name, .. } = &item.data
-                && !skipped_summary
+            if !skipped_summary
                 && data.flags.contains(ChildDataFlags::SKIP_SUMMARY)
-                && &*name.local == "summary"
+                && item.tag_name() == Some("summary")
             {
-                // Skip the first <summary> inside <details>
-                // as it's already drawn
                 skipped_summary = true;
                 continue;
             }
@@ -399,9 +391,9 @@ where
             if let Some(base) = original_start {
                 data.li_ordered_number = Some(base + i);
             }
-            let element = self.traverse_node(item, data);
+            let element = self.traverse_dom(item, data);
 
-            if !data.flags.contains(ChildDataFlags::INSIDE_RUBY) && is_block_element(item) {
+            if !data.flags.contains(ChildDataFlags::INSIDE_RUBY) && item.is_block_element() {
                 if !row.is_empty() {
                     let mut old_row = RenderedSpan::None;
                     std::mem::swap(&mut row, &mut old_row);
@@ -439,7 +431,7 @@ where
         }
     }
 
-    fn render_list(&mut self, node: &Node, data: ChildData) -> RenderedSpan<'a, M, T> {
+    fn render_list(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
         let indent = self.paragraph_spacing.unwrap_or(5.0);
         let items = self.render_children(node, data);
 
@@ -448,11 +440,11 @@ where
             .into()
     }
 
-    fn render_list_item(&mut self, node: &Node, data: ChildData) -> RenderedSpan<'a, M, T> {
+    fn render_list_item(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
         let marker_gap = self.paragraph_spacing.unwrap_or(5.0);
         let content = self.render_list_item_content(node, data);
 
-        if list_item_has_task_marker(node) {
+        if node.has_task_checkbox_child() {
             content
         } else if let Some(num) = data.li_ordered_number {
             widget::row![
@@ -475,28 +467,23 @@ where
 
     fn render_list_item_content(
         &mut self,
-        node: &Node,
+        node: DomRef<'_>,
         data: ChildData,
     ) -> RenderedSpan<'a, M, T> {
-        let children = node.children.borrow();
-        let meaningful: Vec<_> = children
-            .iter()
-            .filter(|child| !is_node_useless(child))
+        let meaningful: Vec<_> = node
+            .children()
+            .into_iter()
+            .filter(|child| !child.is_useless())
             .collect();
 
-        if meaningful.len() == 1
-            && matches!(
-                &meaningful[0].data,
-                NodeData::Element { name, .. } if &*name.local == "p"
-            )
-        {
+        if meaningful.len() == 1 && meaningful[0].tag_name() == Some("p") {
             self.render_children(meaningful[0], data)
         } else {
             self.render_children(node, data)
         }
     }
 
-    fn render_pre_block(&mut self, node: &Node, data: ChildData) -> RenderedSpan<'a, M, T> {
+    fn render_pre_block(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
         let content = self
             .render_children(node, data.insert(ChildDataFlags::KEEP_WHITESPACE))
             .render();
@@ -515,9 +502,6 @@ where
         let text_color = style.and_then(|s| s.text_color);
 
         if inline {
-            // VS Code webview: padding 1×3px, radius 4px, textPreformat colors.
-            // iced expands highlight padding outward and overlaps adjacent spaces, so we
-            // add thin external spacers and keep the pill height tight with absolute line height.
             const INLINE_CODE_V_PAD: f32 = 1.0;
             const INLINE_CODE_H_PAD: f32 = 3.0;
 
@@ -544,7 +528,6 @@ where
             let gap = widget::span("\u{2009}").size(size);
             RenderedSpan::Spans(vec![gap.clone(), code_span, gap])
         } else {
-            // VS Code markdown.css: pre code has no pill — mono + editor foreground only.
             let mut span = widget::span(code).size(size).font(self.font_mono);
             if let Some(color) = text_color.or(inline_color) {
                 span = span.color(color);
@@ -552,94 +535,66 @@ where
             RenderedSpan::Spans(vec![span])
         }
     }
-}
 
-fn alignment_read(data: &mut ChildData, attrs: &[html5ever::Attribute]) {
-    let Some(align) = get_attr(attrs, "align") else {
-        return;
-    };
+    pub(crate) fn render_fragment_roots(
+        &mut self,
+        fragment: &HtmlFragment,
+        data: ChildData,
+    ) -> RenderedSpan<'a, M, T> {
+        let roots = DomRef::fragment_roots(fragment);
+        if roots.is_empty() {
+            return RenderedSpan::None;
+        }
+        if roots.len() == 1 {
+            return self.traverse_dom(roots[0], data);
+        }
+        self.render_children_list(roots, data)
+    }
 
-    if let "right" | "center" | "centre" = align {
-        data.alignment = Some(if align == "right" {
-            ChildAlignment::Right
+    fn render_children_list(
+        &mut self,
+        children: Vec<DomRef<'_>>,
+        data: ChildData,
+    ) -> RenderedSpan<'a, M, T> {
+        let mut column = Vec::new();
+        let mut row = RenderedSpan::None;
+
+        for item in children {
+            if item.is_useless() {
+                continue;
+            }
+            let element = self.traverse_dom(item, data);
+            if item.is_block_element() {
+                if !row.is_empty() {
+                    let mut old_row = RenderedSpan::None;
+                    std::mem::swap(&mut row, &mut old_row);
+                    column.push(old_row);
+                }
+                column.push(element);
+            } else {
+                row = row + element;
+            }
+        }
+
+        if !row.is_empty() {
+            column.push(row);
+        }
+
+        if column.is_empty() {
+            RenderedSpan::None
+        } else if column.len() == 1 {
+            column.into_iter().next().unwrap()
         } else {
-            ChildAlignment::Center
-        });
-    } else if align == "left" {
-        data.alignment = None;
+            widget::column(
+                column
+                    .into_iter()
+                    .filter(|n| !n.is_empty())
+                    .map(RenderedSpan::render),
+            )
+            .spacing(self.paragraph_spacing.unwrap_or(5.0))
+            .into()
+        }
     }
-}
-
-fn get_attr_num(attrs: &[html5ever::Attribute], attr_name: &str) -> Option<f32> {
-    get_attr(attrs, attr_name).and_then(|n| n.parse::<f32>().ok())
-}
-
-fn get_attr<'a>(attrs: &'a [html5ever::Attribute], attr_name: &str) -> Option<&'a str> {
-    attrs
-        .iter()
-        .find(|attr| {
-            let name = &*attr.name.local;
-            name == attr_name
-        })
-        .map(|n| &*n.value)
-}
-
-fn is_node_useless(node: &Node) -> bool {
-    if let markup5ever_rcdom::NodeData::Text { contents } = &node.data {
-        let contents = contents.borrow();
-        let contents = contents.to_string();
-        contents.trim().is_empty()
-    } else {
-        false
-    }
-}
-
-fn is_block_element(node: &Node) -> bool {
-    let markup5ever_rcdom::NodeData::Element { name, .. } = &node.data else {
-        return false;
-    };
-    let n: &str = &name.local;
-
-    matches!(
-        n,
-        "address"
-            | "article"
-            | "aside"
-            | "blockquote"
-            | "canvas"
-            | "dd"
-            | "div"
-            | "dl"
-            | "dt"
-            | "fieldset"
-            | "figcaption"
-            | "figure"
-            | "footer"
-            | "form"
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-            | "h5"
-            | "h6"
-            | "header"
-            | "hr"
-            | "li"
-            | "main"
-            | "nav"
-            | "noscript"
-            | "ol"
-            | "p"
-            | "pre"
-            | "section"
-            | "table"
-            | "tfoot"
-            | "ul"
-            | "video"
-            | "br"
-            | "details"
-            | "summary"
-    )
 }
 
 impl<'a, M: Clone + 'static, T: ValidTheme + 'a> MarkWidget<'a, M, T>
@@ -647,23 +602,17 @@ where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
 {
     fn render_from_block_cache(&mut self) -> Element<'a, M, T> {
-        use super::state::MarkStateSource;
-
         let spacing = self.paragraph_spacing.unwrap_or(5.0);
-        let cache = match &self.state.source {
-            MarkStateSource::Blocks(cache) => cache,
-            MarkStateSource::LegacyDom(dom) => {
-                return self
-                    .traverse_node(&dom.document, ChildData::default())
-                    .render();
-            }
+        let cache = match &self.state.cache {
+            Some(cache) => cache,
+            None => return widget::Column::new().into(),
         };
 
         let mut column = widget::Column::new().spacing(spacing).width(Length::Fill);
         for index in 0..cache.len() {
             let span = match cache.entry(index) {
-                Some(CachedBlock::Dom(dom)) => {
-                    self.traverse_node(&dom.document, ChildData::default())
+                Some(CachedBlock::Fragment(fragment)) => {
+                    self.render_fragment_roots(fragment, ChildData::default())
                 }
                 Some(CachedBlock::Code(code)) => self.render_fenced_code_block(code),
                 Some(CachedBlock::Empty) => RenderedSpan::None,
@@ -693,27 +642,8 @@ where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
 {
     fn from(mut value: MarkWidget<'a, M, T>) -> Self {
-        use super::state::MarkStateSource;
-
-        match &value.state.source {
-            MarkStateSource::LegacyDom(dom) => {
-                value
-                    .traverse_node(&dom.document, ChildData::default())
-                    .render()
-            }
-            MarkStateSource::Blocks(_) => value.render_from_block_cache(),
-        }
+        value.render_from_block_cache()
     }
-}
-
-fn list_item_has_task_marker(node: &Node) -> bool {
-    node.children.borrow().iter().any(|child| {
-        let NodeData::Element { name, attrs, .. } = &child.data else {
-            return false;
-        };
-
-        &*name.local == "input" && get_attr(&attrs.borrow(), "type") == Some("checkbox")
-    })
 }
 
 fn clean_whitespace(input: &str) -> String {

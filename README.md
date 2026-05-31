@@ -131,7 +131,7 @@ These exist for migration and may change without notice:
 - `_iced_backend` — default iced renderer (on by default)
 - `_legacy_comrak` — comrak fallback until pulldown parity
 - `_html_preprocess` — optional `lol_html` rewrite layer
-- `_rcdom_compat` — `markup5ever_rcdom` bridge for the iced HTML path
+- `_rcdom_compat` — `markup5ever_rcdom` bridge for migration parity tests only (not used by default iced backend)
 
 ## Iced passthrough features
 

@@ -1,13 +1,12 @@
-//! Compile-once cache mapping [`RenderBlock`] values to [`RcDom`] trees for rendering.
+//! Compile-once cache mapping [`RenderBlock`] values to [`HtmlFragment`] trees for rendering.
 
-use markup5ever_rcdom::RcDom;
 use pulldown_cmark::{html, Event, Options, Parser};
 
 use crate::core::block::{
     BlockContent, BlockStatus, CompiledMarkdown, RenderBlock,
 };
 use crate::core::document::Document;
-use crate::html::rcdom_compat::{fragment_to_rcdom, html_to_rcdom};
+use crate::html::fragment::HtmlFragment;
 
 /// Fenced code payload for backends that render code blocks outside the DOM.
 #[derive(Debug, Clone)]
@@ -19,7 +18,7 @@ pub(crate) struct CachedCodeBlock {
 
 /// One compiled block ready for DOM traversal.
 pub(crate) enum CachedBlock {
-    Dom(RcDom),
+    Fragment(HtmlFragment),
     Code(CachedCodeBlock),
     Empty,
 }
@@ -91,8 +90,10 @@ impl BlockRenderCache {
             self.compile_count += 1;
         }
         match &block.content {
-            BlockContent::Markdown(compiled) => CachedBlock::Dom(markdown_to_rcdom(compiled)),
-            BlockContent::Html(fragment) => CachedBlock::Dom(fragment_to_rcdom(fragment)),
+            BlockContent::Markdown(compiled) => {
+                CachedBlock::Fragment(markdown_to_fragment(compiled))
+            }
+            BlockContent::Html(fragment) => CachedBlock::Fragment(fragment.clone()),
             BlockContent::Code { lang, .. } => {
                 CachedBlock::Code(CachedCodeBlock {
                     language: lang.clone(),
@@ -100,11 +101,11 @@ impl BlockRenderCache {
                 })
             }
             BlockContent::PendingMarkdown => {
-                CachedBlock::Dom(pending_markdown_to_rcdom(&block.source))
+                CachedBlock::Fragment(pending_markdown_to_fragment(&block.source))
             }
             BlockContent::Unsupported { .. } => CachedBlock::Empty,
             #[cfg(feature = "_legacy_comrak")]
-            BlockContent::LegacyHtml(html) => CachedBlock::Dom(html_to_rcdom(html)),
+            BlockContent::LegacyHtml(html) => CachedBlock::Fragment(HtmlFragment::from_html(html)),
         }
     }
 
@@ -115,26 +116,26 @@ impl BlockRenderCache {
     }
 }
 
-fn markdown_to_rcdom(compiled: &CompiledMarkdown) -> RcDom {
+fn markdown_to_fragment(compiled: &CompiledMarkdown) -> HtmlFragment {
     let mut html_buf = String::new();
     html::push_html(&mut html_buf, compiled.events().iter().cloned());
     if html_buf.is_empty() {
-        html_to_rcdom("<p></p>")
+        HtmlFragment::from_html("<p></p>")
     } else {
-        html_to_rcdom(&html_buf)
+        HtmlFragment::from_html(&html_buf)
     }
 }
 
-fn pending_markdown_to_rcdom(source: &str) -> RcDom {
+fn pending_markdown_to_fragment(source: &str) -> HtmlFragment {
     let events: Vec<Event<'static>> = Parser::new_ext(source, Options::all())
         .map(|event| event.into_static())
         .collect();
     let mut html_buf = String::new();
     html::push_html(&mut html_buf, events.iter().cloned());
     if html_buf.is_empty() {
-        html_to_rcdom(&format!("<p>{}</p>", escape_html_text(source)))
+        HtmlFragment::from_html(&format!("<p>{}</p>", escape_html_text(source)))
     } else {
-        html_to_rcdom(&html_buf)
+        HtmlFragment::from_html(&html_buf)
     }
 }
 
@@ -173,15 +174,15 @@ mod tests {
         .expect("parse");
         let mut cache = BlockRenderCache::from_blocks(&blocks);
         assert_eq!(cache.compile_count(), blocks.len());
-        let first_dom = match cache.entry(0) {
-            Some(CachedBlock::Dom(dom)) => dom as *const RcDom,
-            _ => panic!("expected dom entry"),
+        let first = match cache.entry(0) {
+            Some(CachedBlock::Fragment(fragment)) => fragment as *const HtmlFragment,
+            _ => panic!("expected fragment entry"),
         };
         assert!(std::ptr::eq(
-            first_dom,
+            first,
             match cache.entry(0) {
-                Some(CachedBlock::Dom(dom)) => dom as *const RcDom,
-                _ => panic!("expected dom"),
+                Some(CachedBlock::Fragment(fragment)) => fragment as *const HtmlFragment,
+                _ => panic!("expected fragment"),
             }
         ));
         cache.rebuild(&blocks);
@@ -198,11 +199,11 @@ mod tests {
         assert!(!doc.blocks().is_empty());
         let cache = BlockRenderCache::from_blocks(doc.blocks());
         let any_children = (0..cache.len()).any(|i| {
-            matches!(cache.entry(i), Some(CachedBlock::Dom(dom)) if {
-                !dom.document.children.borrow().is_empty()
+            matches!(cache.entry(i), Some(CachedBlock::Fragment(fragment)) if {
+                !fragment.roots().is_empty()
             })
         });
-        assert!(any_children, "expected non-empty DOM in block cache");
+        assert!(any_children, "expected non-empty fragment in block cache");
     }
 
     #[test]
@@ -220,7 +221,7 @@ mod tests {
         assert!(cache
             .entries()
             .iter()
-            .any(|entry| matches!(entry, CachedBlock::Dom(_))));
+            .any(|entry| matches!(entry, CachedBlock::Fragment(_))));
     }
 
     #[cfg(feature = "stream")]
@@ -255,9 +256,9 @@ mod tests {
             )),
         }];
         let cache = BlockRenderCache::from_blocks(&blocks);
-        let CachedBlock::Dom(dom) = cache.entry(0).expect("entry") else {
-            panic!("expected dom");
+        let CachedBlock::Fragment(fragment) = cache.entry(0).expect("entry") else {
+            panic!("expected fragment");
         };
-        assert!(!dom.document.children.borrow().is_empty());
+        assert!(!fragment.roots().is_empty());
     }
 }

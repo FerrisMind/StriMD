@@ -40,13 +40,12 @@ default = ["_iced_backend", "_legacy_comrak"]
 # Supported public features (stable contract)
 no_iced = []
 stream = ["dep:mdstream", "mdstream/pulldown"]
-static = ["dep:html5ever", "_rcdom_compat"]
+static = ["dep:html5ever"]
 
 # Implementation-detail features (unsupported for downstream use)
 _iced_backend = [
     "dep:iced",
     "dep:html5ever",
-    "_rcdom_compat",
     "static",
     "iced/x11",
     "iced/wayland",

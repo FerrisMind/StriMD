@@ -1,22 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
-use markup5ever_rcdom::RcDom;
-
 use crate::html::block_cache::{BlockRenderCache, CachedBlock};
 use super::structs::{UpdateMsg, UpdateMsgKind};
 use crate::core::document::Document;
 use crate::core::block::RenderBlock;
-use crate::html::rcdom_compat::html_to_rcdom;
+use crate::html::fragment::HtmlFragment;
 use crate::profile::ParseProfile;
 
 #[cfg(feature = "stream")]
 use crate::core::StreamDocument;
 
-/// Source DOM for [`MarkState`]: legacy full-document tree or block cache.
-pub(crate) enum MarkStateSource {
-    LegacyDom(RcDom),
-    Blocks(BlockRenderCache),
-}
+use super::dom::DomRef;
 
 /// The state of the document.
 ///
@@ -29,7 +23,7 @@ pub(crate) enum MarkStateSource {
 /// # use frostmark::MarkState;
 /// # const YOUR_TEXT: &str = "";
 /// # fn e() { let m =
-/// MarkState::with_html_and_markdown(YOUR_TEXT)
+/// MarkState::with_html(YOUR_TEXT)
 /// # ;
 /// // or if you just want HTML
 /// # let m =
@@ -37,25 +31,23 @@ pub(crate) enum MarkStateSource {
 /// # ; }
 /// ```
 pub struct MarkState {
-    pub(crate) source: MarkStateSource,
+    pub(crate) cache: Option<BlockRenderCache>,
     pub(crate) dropdown_state: HashMap<usize, bool>,
 }
 
 impl MarkState {
-    /// Processes documents containing **pure HTML**,
-    /// without any Markdown support.
+    /// Processes documents containing **pure HTML**, without any Markdown support.
     #[must_use]
-    #[allow(clippy::missing_panics_doc)]
     pub fn with_html(input: &str) -> Self {
-        let dom = html_to_rcdom(input);
-        let mut dropdown_state = HashMap::new();
-        let mut dropdown_counter = 0;
-        find_state(&dom.document, &mut dropdown_state, &mut dropdown_counter);
-
-        Self {
-            source: MarkStateSource::LegacyDom(dom),
-            dropdown_state,
-        }
+        let fragment = HtmlFragment::from_html(input);
+        let block = RenderBlock {
+            id: crate::core::ids::BlockId::new(0),
+            status: crate::core::block::BlockStatus::Committed,
+            kind: crate::core::block::BlockKind::HtmlBlock,
+            source: std::sync::Arc::from(input),
+            content: crate::core::block::BlockContent::Html(fragment),
+        };
+        Self::from_blocks(std::slice::from_ref(&block))
     }
 
     /// Build iced state from a parsed [`Document`] (pulldown block model).
@@ -66,7 +58,7 @@ impl MarkState {
         let mut dropdown_counter = 0;
         scan_block_cache_dropdowns(&cache, &mut dropdown_state, &mut dropdown_counter);
         Self {
-            source: MarkStateSource::Blocks(cache),
+            cache: Some(cache),
             dropdown_state,
         }
     }
@@ -80,7 +72,7 @@ impl MarkState {
         scan_block_cache_dropdowns(&cache, &mut dropdown_state, &mut dropdown_counter);
 
         Self {
-            source: MarkStateSource::Blocks(cache),
+            cache: Some(cache),
             dropdown_state,
         }
     }
@@ -88,19 +80,12 @@ impl MarkState {
     /// Replace block cache from a streaming document snapshot.
     #[cfg(feature = "stream")]
     pub fn sync_from_stream(&mut self, stream: &StreamDocument) {
-        match &mut self.source {
-            MarkStateSource::Blocks(cache) => {
-                cache.sync_from_stream(stream);
-            }
-            MarkStateSource::LegacyDom(_) => {
-                let mut cache = BlockRenderCache::default();
-                cache.sync_from_stream(stream);
-                self.source = MarkStateSource::Blocks(cache);
-            }
-        }
+        let mut cache = BlockRenderCache::default();
+        cache.sync_from_stream(stream);
+        self.cache = Some(cache);
         self.dropdown_state.clear();
         let mut dropdown_counter = 0;
-        if let MarkStateSource::Blocks(cache) = &self.source {
+        if let Some(cache) = &self.cache {
             scan_block_cache_dropdowns(cache, &mut self.dropdown_state, &mut dropdown_counter);
         }
     }
@@ -134,14 +119,11 @@ impl MarkState {
     #[must_use]
     pub fn find_image_links(&self) -> HashSet<String> {
         let mut storage = HashSet::new();
-        match &self.source {
-            MarkStateSource::LegacyDom(dom) => {
-                find_image_links(&dom.document, &mut storage);
-            }
-            MarkStateSource::Blocks(cache) => {
-                for entry in cache.entries() {
-                    if let CachedBlock::Dom(dom) = entry {
-                        find_image_links(&dom.document, &mut storage);
+        if let Some(cache) = &self.cache {
+            for entry in cache.entries() {
+                if let CachedBlock::Fragment(fragment) = entry {
+                    for root in DomRef::fragment_roots(fragment) {
+                        find_image_links_dom(root, &mut storage);
                     }
                 }
             }
@@ -162,50 +144,36 @@ fn scan_block_cache_dropdowns(
     dropdown_counter: &mut usize,
 ) {
     for index in 0..cache.len() {
-        if let Some(CachedBlock::Dom(dom)) = cache.entry(index) {
-            find_state(&dom.document, dropdown_state, dropdown_counter);
+        if let Some(CachedBlock::Fragment(fragment)) = cache.entry(index) {
+            for root in DomRef::fragment_roots(fragment) {
+                find_state_dom(root, dropdown_state, dropdown_counter);
+            }
         }
     }
 }
 
-fn find_state(
-    node: &markup5ever_rcdom::Node,
+fn find_state_dom(
+    node: DomRef<'_>,
     dropdown_state: &mut HashMap<usize, bool>,
     dropdown_counter: &mut usize,
 ) {
-    let borrow = node.children.borrow();
-    match &node.data {
-        markup5ever_rcdom::NodeData::Element { name, .. } if &name.local == "details" => {
-            dropdown_state.insert(*dropdown_counter, false);
-            *dropdown_counter += 1;
-            for child in &*borrow {
-                find_state(child, dropdown_state, dropdown_counter);
-            }
-        }
-        _ => {
-            for child in &*borrow {
-                find_state(child, dropdown_state, dropdown_counter);
-            }
-        }
+    if node.tag_name() == Some("details") {
+        dropdown_state.insert(*dropdown_counter, false);
+        *dropdown_counter += 1;
+    }
+    for child in node.children() {
+        find_state_dom(child, dropdown_state, dropdown_counter);
     }
 }
 
-fn find_image_links(node: &markup5ever_rcdom::Node, storage: &mut HashSet<String>) {
-    let borrow = node.children.borrow();
-    match &node.data {
-        markup5ever_rcdom::NodeData::Element { name, attrs, .. } if &name.local == "img" => {
-            let attrs = attrs.borrow();
-            if let Some(attr) = attrs.iter().find(|attr| &*attr.name.local == "src") {
-                let url = &*attr.value;
-                if !url.is_empty() {
-                    storage.insert(url.to_owned());
-                }
-            }
-        }
-        _ => {
-            for child in &*borrow {
-                find_image_links(child, storage);
-            }
-        }
+fn find_image_links_dom(node: DomRef<'_>, storage: &mut HashSet<String>) {
+    if node.tag_name() == Some("img")
+        && let Some(url) = node.get_attr("src")
+        && !url.is_empty()
+    {
+        storage.insert(url);
+    }
+    for child in node.children() {
+        find_image_links_dom(child, storage);
     }
 }
