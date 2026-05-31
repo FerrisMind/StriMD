@@ -87,3 +87,30 @@ Simulate LLM token streaming through `StreamDocument` and stream patches.
 ```sh
 cargo run --example stream_chat --no-default-features --features no_iced,stream
 ```
+
+---
+
+# egui Table Harness (Task 4.5)
+
+Visual + headless verification that GFM tables use the shared frostmark `BlockKind::Table` path (static and streamed). Replaces Nova `chat_table.rs` checks.
+
+```sh
+# CI / headless
+cargo run --example egui_table_harness --no-default-features --features no_iced,static,stream -- --check
+
+# Visual
+cargo run --example egui_table_harness --no-default-features --features no_iced,static,stream
+```
+
+---
+
+# egui Pipeline Harness (Task 7.4)
+
+Unified static preview + streaming pipeline via frostmark only — no app-specific markdown workarounds.
+
+```sh
+cargo run --example egui_pipeline_harness --no-default-features --features no_iced,static,stream -- --check
+cargo run --example egui_pipeline_harness --no-default-features --features no_iced,static,stream
+```
+
+Full harness script: `./scripts/verify-egui-harness.sh`

@@ -19,6 +19,9 @@
 //!
 //! Implementation-detail features (`_iced_backend`, `_legacy_comrak`, `_html_preprocess`,
 //! `_rcdom_compat`) exist for migration only and are **not** part of the stable public contract.
+//!
+//! See [`docs/API.md`](https://github.com/Mrmayman/frostmark/blob/main/docs/API.md) for the full
+//! public API reference.
 
 #[cfg(all(feature = "no_iced", feature = "_iced_backend"))]
 compile_error!(

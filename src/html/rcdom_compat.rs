@@ -1,4 +1,5 @@
-//! `RcDom` ↔ [`HtmlFragment`] bridge during iced backend migration.
+//! `RcDom` ↔ [`HtmlFragment`] bridge for migration parity tests only.
+//! Production rendering uses TreeSink → `HtmlFragment` directly.
 
 use std::sync::Arc;
 

@@ -1,0 +1,172 @@
+# Frostmark public API
+
+This document describes the **stable public contract** for frostmark integrators. Only three user-facing Cargo features exist: `no_iced`, `static`, and `stream`.
+
+Implementation features (`_iced_backend`, `_legacy_comrak`, `_html_preprocess`, `_rcdom_compat`) are migration internals and may change without notice.
+
+## Cargo features
+
+| Feature | Required with | Enables |
+|---------|---------------|---------|
+| `no_iced` | `default-features = false` | Headless builds without iced/GPU |
+| `static` | — | `Document::parse`, `Document::to_html()`, `HtmlFragment` |
+| `stream` | — | `StreamDocument`, `StreamPatch`, `StreamOptions` |
+
+Typical headless dependency:
+
+```toml
+frostmark = { version = "0.3", default-features = false, features = ["no_iced", "static", "stream"] }
+```
+
+Default GUI dependency (iced + migration fallbacks):
+
+```toml
+frostmark = "0.3"
+```
+
+## Core types
+
+All backends share the same block model:
+
+| Type | Role |
+|------|------|
+| `Document` | Fully parsed static Markdown document |
+| `StreamDocument` | Append-only streaming document (LLM tokens) |
+| `RenderBlock` | One renderable unit (paragraph, heading, table, HTML, …) |
+| `BlockId` | Stable block identifier for stream patches |
+| `BlockKind` | Block classification (`Paragraph`, `Table`, `HtmlBlock`, …) |
+| `BlockContent` | Payload: Markdown events cache or `HtmlFragment` |
+| `BlockStatus` | Committed vs pending (streaming) |
+| `ParseProfile` | Parser preset (`GitHubPreview`, `ChatStream`, …) |
+| `ParseOptions` | Fine-grained parse policy (raw HTML, legacy fallback) |
+
+Pulldown event internals are **not** exposed in the public API.
+
+## Static preview
+
+```rust
+use frostmark::{Document, ParseProfile};
+
+let doc = Document::parse(source, ParseProfile::GitHubPreview)?;
+assert_eq!(doc.parse_backend(), frostmark::ParseBackend::Pulldown);
+
+for block in doc.blocks() {
+    // inspect block.kind, block.content, block.id
+}
+
+#[cfg(feature = "static")]
+let html = doc.to_html()?;
+```
+
+`ParseProfile::GitHubPreview` enables GFM tables, task lists, strikethrough, footnotes, alerts, math, and wikilinks (pulldown-cmark 0.13).
+
+### Diagnostics (migration builds)
+
+When `_legacy_comrak` is enabled (default today), `Document::diagnostics()` reports shadow-compare results:
+
+```rust
+let doc = Document::parse(source, ParseProfile::GitHubPreview)?;
+if doc.shadow_mismatch() {
+    // pulldown HTML ≠ comrak — see docs/LEGACY_REMOVAL_GATE.md
+}
+assert!(!doc.legacy_fallback_used()); // default policy keeps pulldown output
+```
+
+Known accepted delta: `tests/fixtures/gfm_wikilink.md` — pulldown wikilink HTML differs from comrak; pulldown is canonical.
+
+## LLM streaming
+
+Use `StreamOptions::chat()` for chat UIs. It configures mdstream to invalidate footnotes and late reference definitions.
+
+```rust
+use frostmark::{StreamDocument, StreamOptions, StreamPatch};
+
+let mut doc = StreamDocument::new(StreamOptions::chat());
+
+for chunk in token_chunks {
+    let update = doc.append(chunk);
+    if update.reset {
+        // rebuild UI from scratch
+    }
+    match update.patch {
+        StreamPatch::AppendCommitted { blocks } => { /* append new blocks */ }
+        StreamPatch::ReplacePending => { /* refresh tail */ }
+        StreamPatch::ReplaceCommitted { id } => { /* reparse invalidated block */ }
+        StreamPatch::ClearAndRebuild => { /* full rebuild */ }
+        StreamPatch::Noop => {}
+    }
+}
+
+doc.finalize();
+```
+
+Committed blocks are parsed once and cached. Pending blocks reparse on each append. Raw HTML in streams follows the same `HtmlFragment` path as static parsing.
+
+## Iced backend (default builds)
+
+When `_iced_backend` is active (default, without `no_iced`):
+
+```rust
+use frostmark::{Document, MarkState, MarkWidget, ParseProfile};
+
+// Legacy string API (still supported)
+let state = MarkState::with_html_and_markdown(text);
+
+// Preferred: shared core document
+let doc = Document::parse(text, ParseProfile::GitHubPreview)?;
+let state = MarkState::from_document(&doc);
+
+// In view:
+// MarkWidget::new(&state)
+```
+
+Streaming UI:
+
+```rust
+#[cfg(feature = "stream")]
+{
+    let mut stream = StreamDocument::new(StreamOptions::chat());
+    stream.append(chunk);
+    let mut state = MarkState::from_document(/* or from_blocks */);
+    state.sync_from_stream(&stream);
+}
+```
+
+## HTML fragments
+
+Raw HTML in Markdown is parsed into owned `HtmlFragment` trees via html5ever TreeSink (not RcDom in production):
+
+```rust
+#[cfg(feature = "static")]
+use frostmark::HtmlFragment;
+
+let fragment = HtmlFragment::from_html("<details><summary>x</summary></details>")?;
+```
+
+Supported tags and sanitization policy are enforced in the iced renderer and `RawHtmlPolicy` (see `ParseOptions`).
+
+## Error types
+
+| Type | When |
+|------|------|
+| `ParseError` | Markdown parse failure |
+| `HtmlFragmentError` | HTML fragment parse failure |
+| `RenderError` | HTML export / render failure |
+| `UnsupportedReason` | Unsupported construct (safe placeholder) |
+
+Functions return `Result` instead of panicking on malformed input.
+
+## Examples
+
+| Example | Command |
+|---------|---------|
+| Hello (iced) | `cargo run --example hello` |
+| Static export | `cargo run --example static_export --no-default-features --features no_iced,static` |
+| Stream chat | `cargo run --example stream_chat --no-default-features --features no_iced,stream` |
+
+## Related docs
+
+- [MIGRATION.md](MIGRATION.md) — stack migration guide
+- [README_HEADLESS.md](README_HEADLESS.md) — headless quick start (included in crate docs for `no_iced` builds)
+- [LEGACY_REMOVAL_GATE.md](LEGACY_REMOVAL_GATE.md) — comrak/RcDom removal criteria
+- [CRATE_SPLIT_SPIKE.md](CRATE_SPLIT_SPIKE.md) — single-crate vs split evaluation_REMOVAL_GATE.md](LEGACY

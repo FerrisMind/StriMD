@@ -2,7 +2,11 @@
 
 This document tracks the frostmark-only migration from comrak + full-document RcDom to pulldown-cmark + mdstream + `RenderBlock` / `HtmlFragment`.
 
-Nova application integration (including removal of `chat_table.rs`) is **out of scope** for this crate; see your app repo after frostmark parity gates pass.
+Nova application integration is **out of scope** for this crate. Tasks 4.5 and 7.4 are validated by egui harness examples inside frostmark:
+
+- `examples/egui_table_harness` — shared table path (static + stream)
+- `examples/egui_pipeline_harness` — unified pipeline without app workarounds
+- `./scripts/verify-egui-harness.sh` — CI-friendly checks
 
 ## Target architecture
 
@@ -31,7 +35,7 @@ Default builds (`default-features = true`) still enable iced + migration fallbac
 
 - `_iced_backend` — iced renderer (on by default)
 - `_legacy_comrak` — comrak shadow/fallback until pulldown parity
-- `_rcdom_compat` — RcDom bridge for iced HTML traversal
+- `_rcdom_compat` — RcDom bridge for parity tests only (production iced path uses TreeSink → `HtmlFragment`)
 - `_html_preprocess` — optional `lol_html` rewrite layer
 
 Do not depend on these in application code.
@@ -93,6 +97,8 @@ Phases 0–7 core implementation and parity fixtures are complete in `nova_refs/
 
 Remaining frostmark crate work:
 
-- **8.1 / 8.2** — remove comrak and RcDom after stabilization window and wikilink policy
-- **8.3** — this document + README (ongoing)
-- **4.5 / 7.4** — application table workarounds (e.g. `chat_table.rs`) live in downstream apps, not in frostmark
+- **8.1** — remove comrak after 2-week stabilization window (wikilink policy documented; pulldown canonical)
+- **8.2** — done: production iced path uses `HtmlFragment` without RcDom
+- **8.3** — done: README, `docs/API.md`, headless/migration guides
+- **8.4** — done: see [CRATE_SPLIT_SPIKE.md](CRATE_SPLIT_SPIKE.md) (recommend single crate for 0.3)
+- **4.5 / 7.4** — done via egui harness examples (`egui_table_harness`, `egui_pipeline_harness`)

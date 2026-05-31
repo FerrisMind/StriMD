@@ -122,7 +122,7 @@ cargo run --example stream_chat --no-default-features --features no_iced,stream
 
 CI runs `./scripts/verify-features.sh` and headless jobs via `.github/workflows/ci.yml`.
 
-See [docs/MIGRATION.md](docs/MIGRATION.md) for the pulldown/mdstream migration guide and [docs/LEGACY_REMOVAL_GATE.md](docs/LEGACY_REMOVAL_GATE.md) for comrak/RcDom removal criteria.
+See [docs/API.md](docs/API.md) for the public API reference, [docs/MIGRATION.md](docs/MIGRATION.md) for the pulldown/mdstream migration guide, and [docs/LEGACY_REMOVAL_GATE.md](docs/LEGACY_REMOVAL_GATE.md) for comrak/RcDom removal criteria.
 
 ## Implementation-only features (unsupported)
 

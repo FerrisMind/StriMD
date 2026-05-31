@@ -30,4 +30,4 @@ doc.append("**world**.\n\n");
 | `static` | `Document::parse` and `Document::to_html()` |
 | `stream` | `StreamDocument` incremental parsing |
 
-See the repository [README](../README.md) for iced `MarkWidget` usage and [MIGRATION.md](MIGRATION.md) for the stack migration guide.
+See [API.md](API.md) for the full public API, the repository [README](../README.md) for iced `MarkWidget` usage, and [MIGRATION.md](MIGRATION.md) for the stack migration guide.
