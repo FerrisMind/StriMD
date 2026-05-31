@@ -15,7 +15,14 @@ categories = ["gui"]
 bitflags = "2"
 pulldown-cmark = "0.13"
 
-iced = { version = "0.14", optional = true, default-features = false, features = ["advanced"] }
+# Minimal iced surface (no iced defaults): renderers, executor, widgets for MarkWidget.
+# x11 / wayland are wired through `_iced_backend`.
+iced = { version = "0.14", optional = true, default-features = false, features = [
+    "advanced",
+    "wgpu",
+    "tiny-skia",
+    "thread-pool",
+] }
 html5ever = { version = "0.36", optional = true }
 markup5ever_rcdom = { version = "0.36", optional = true }
 comrak = { version = "0.49", default-features = false, optional = true }
@@ -40,6 +47,9 @@ _iced_backend = [
     "dep:iced",
     "dep:html5ever",
     "_rcdom_compat",
+    "static",
+    "iced/x11",
+    "iced/wayland",
 ]
 _legacy_comrak = ["dep:comrak", "dep:markup5ever_rcdom"]
 _html_preprocess = ["dep:lol_html"]
@@ -50,6 +60,7 @@ markdown = ["_legacy_comrak"]
 iced-wgpu = ["iced/wgpu"]
 iced-tiny-skia = ["iced/tiny-skia"]
 iced-tokio = ["iced/tokio"]
+iced-wayland = ["iced/wayland"]
 iced-windowing = ["iced/x11", "iced/wayland"]
 
 [[example]]

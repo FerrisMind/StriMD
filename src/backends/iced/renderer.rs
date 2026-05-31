@@ -1,15 +1,16 @@
 use iced::{Element, Font, Length, Padding, Pixels, border, widget};
 use markup5ever_rcdom::{Node, NodeData};
 
+use crate::html::block_cache::CachedBlock;
+
 use super::{
     structs::{
-        ChildAlignment, ChildDataFlags, ImageInfo, MarkWidget, RenderedSpan, UpdateMsg,
+        ChildAlignment, ChildData, ChildDataFlags, ImageInfo, MarkWidget, RenderedSpan, UpdateMsg,
         UpdateMsgKind,
     },
     widgets::{link, link_text, underline},
 };
-
-use super::structs::ChildData;
+use crate::html::block_cache::CachedCodeBlock;
 
 mod ruby;
 mod table;
@@ -641,13 +642,65 @@ fn is_block_element(node: &Node) -> bool {
     )
 }
 
+impl<'a, M: Clone + 'static, T: ValidTheme + 'a> MarkWidget<'a, M, T>
+where
+    <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
+{
+    fn render_from_block_cache(&mut self) -> Element<'a, M, T> {
+        use super::state::MarkStateSource;
+
+        let spacing = self.paragraph_spacing.unwrap_or(5.0);
+        let cache = match &self.state.source {
+            MarkStateSource::Blocks(cache) => cache,
+            MarkStateSource::LegacyDom(_) => {
+                return widget::Column::new().into();
+            }
+        };
+
+        let mut column = widget::Column::new().spacing(spacing).width(Length::Fill);
+        for index in 0..cache.len() {
+            let span = match cache.entry(index) {
+                Some(CachedBlock::Dom(dom)) => {
+                    self.traverse_node(&dom.document, ChildData::default())
+                }
+                Some(CachedBlock::Code(code)) => self.render_fenced_code_block(code),
+                Some(CachedBlock::Empty) => RenderedSpan::None,
+                None => RenderedSpan::None,
+            };
+            if span.is_empty() {
+                continue;
+            }
+            column = column.push(span.render());
+        }
+        column.into()
+    }
+
+    fn render_fenced_code_block(&self, block: &CachedCodeBlock) -> RenderedSpan<'a, M, T> {
+        let size = self.text_size;
+        let code = block.code.clone();
+        if let Some(draw) = &self.fn_drawing_pre_block {
+            draw(self.codeblock(code, size, false).render()).into()
+        } else {
+            self.codeblock(code, size, false)
+        }
+    }
+}
+
 impl<'a, M: Clone + 'static, T: ValidTheme + 'a> From<MarkWidget<'a, M, T>> for Element<'a, M, T>
 where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
 {
     fn from(mut value: MarkWidget<'a, M, T>) -> Self {
-        let node = &value.state.dom.document;
-        value.traverse_node(node, ChildData::default()).render()
+        use super::state::MarkStateSource;
+
+        match &value.state.source {
+            MarkStateSource::LegacyDom(dom) => {
+                value
+                    .traverse_node(&dom.document, ChildData::default())
+                    .render()
+            }
+            MarkStateSource::Blocks(_) => value.render_from_block_cache(),
+        }
     }
 }
 

@@ -99,6 +99,7 @@ fn legacy_html_blocks(source: &str) -> Result<Vec<RenderBlock>, ParseError> {
     }])
 }
 
+#[cfg(all(feature = "_legacy_comrak", feature = "static"))]
 fn normalize_html(html: &str) -> String {
     html.split_whitespace().collect::<Vec<_>>().join(" ")
 }

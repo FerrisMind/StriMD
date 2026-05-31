@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+#[cfg(feature = "static")]
 use crate::core::error::HtmlFragmentError;
 
 /// Index into an [`HtmlFragment`] node arena.
@@ -68,10 +69,10 @@ impl HtmlFragment {
         }
         #[cfg(feature = "static")]
         {
-            if let Ok(fragment) = crate::html::treesink::parse_html_fragment(html) {
-                if !fragment.roots().is_empty() {
-                    return fragment;
-                }
+            if let Ok(fragment) = crate::html::treesink::parse_html_fragment(html)
+                && !fragment.roots().is_empty()
+            {
+                return fragment;
             }
         }
         let mut fragment = Self::empty();

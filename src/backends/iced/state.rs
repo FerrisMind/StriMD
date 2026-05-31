@@ -1,9 +1,21 @@
 use std::collections::{HashMap, HashSet};
 
-use html5ever::{ParseOpts, tendril::TendrilSink};
 use markup5ever_rcdom::RcDom;
 
+use crate::html::block_cache::{BlockRenderCache, CachedBlock};
 use super::structs::{UpdateMsg, UpdateMsgKind};
+use crate::core::document::Document;
+use crate::core::block::RenderBlock;
+use crate::html::rcdom_compat::html_to_rcdom;
+
+#[cfg(feature = "stream")]
+use crate::core::StreamDocument;
+
+/// Source DOM for [`MarkState`]: legacy full-document tree or block cache.
+pub(crate) enum MarkStateSource {
+    LegacyDom(RcDom),
+    Blocks(BlockRenderCache),
+}
 
 /// The state of the document.
 ///
@@ -24,45 +36,76 @@ use super::structs::{UpdateMsg, UpdateMsgKind};
 /// # ; }
 /// ```
 pub struct MarkState {
-    pub(crate) dom: RcDom,
-
+    pub(crate) source: MarkStateSource,
     pub(crate) dropdown_state: HashMap<usize, bool>,
 }
 
 impl MarkState {
     /// Processes documents containing **pure HTML**,
     /// without any Markdown support.
-    ///
-    /// Use this if you prioritize performance and
-    /// don't need Markdown support,
-    /// or if you want to avoid potential artifacts
-    /// from mixing HTML and Markdown.
     #[must_use]
-    #[allow(clippy::missing_panics_doc)] // Will never panic
+    #[allow(clippy::missing_panics_doc)]
     pub fn with_html(input: &str) -> Self {
-        let dom = html5ever::parse_document(RcDom::default(), ParseOpts::default())
-            .from_utf8()
-            .read_from(&mut input.as_bytes())
-            // Will not panic as reading from &[u8] cannot fail
-            .unwrap();
-
+        let dom = html_to_rcdom(input);
         let mut dropdown_state = HashMap::new();
         let mut dropdown_counter = 0;
         find_state(&dom.document, &mut dropdown_state, &mut dropdown_counter);
 
         Self {
-            dom,
+            source: MarkStateSource::LegacyDom(dom),
             dropdown_state,
+        }
+    }
+
+    /// Build iced state from a parsed [`Document`] (pulldown block model).
+    #[must_use]
+    pub fn from_document(document: &Document) -> Self {
+        let cache = BlockRenderCache::from_document(document);
+        let mut dropdown_state = HashMap::new();
+        let mut dropdown_counter = 0;
+        scan_block_cache_dropdowns(&cache, &mut dropdown_state, &mut dropdown_counter);
+        Self {
+            source: MarkStateSource::Blocks(cache),
+            dropdown_state,
+        }
+    }
+
+    /// Build iced state from backend-agnostic [`RenderBlock`] values.
+    #[must_use]
+    pub fn from_blocks(blocks: &[RenderBlock]) -> Self {
+        let cache = BlockRenderCache::from_blocks(blocks);
+        let mut dropdown_state = HashMap::new();
+        let mut dropdown_counter = 0;
+        scan_block_cache_dropdowns(&cache, &mut dropdown_state, &mut dropdown_counter);
+
+        Self {
+            source: MarkStateSource::Blocks(cache),
+            dropdown_state,
+        }
+    }
+
+    /// Replace block cache from a streaming document snapshot.
+    #[cfg(feature = "stream")]
+    pub fn sync_from_stream(&mut self, stream: &StreamDocument) {
+        match &mut self.source {
+            MarkStateSource::Blocks(cache) => {
+                cache.sync_from_stream(stream);
+            }
+            MarkStateSource::LegacyDom(_) => {
+                let mut cache = BlockRenderCache::default();
+                cache.sync_from_stream(stream);
+                self.source = MarkStateSource::Blocks(cache);
+            }
+        }
+        self.dropdown_state.clear();
+        let mut dropdown_counter = 0;
+        if let MarkStateSource::Blocks(cache) = &self.source {
+            scan_block_cache_dropdowns(cache, &mut self.dropdown_state, &mut dropdown_counter);
         }
     }
 
     /// Processes documents containing both
     /// **HTML and Markdown** (or a mix of both).
-    ///
-    /// Use this method when you need to support
-    /// Markdown formatting. However, note that
-    /// it may introduce formatting bugs when
-    /// dealing with pure HTML documents.
     #[must_use]
     #[cfg(feature = "_legacy_comrak")]
     pub fn with_html_and_markdown(input: &str) -> Self {
@@ -72,8 +115,6 @@ impl MarkState {
 
     /// Processes documents containing **pure Markdown**,
     /// filtering out any HTML content.
-    ///
-    /// Useful for things like messaging apps.
     #[must_use]
     #[cfg(feature = "_legacy_comrak")]
     pub fn with_markdown_only(input: &str) -> Self {
@@ -83,25 +124,27 @@ impl MarkState {
     }
 
     /// Updates the internal state of the document.
-    ///
-    /// Call this method after receiving an update message
-    /// from [`crate::MarkWidget::on_updating_state`].
     pub fn update(&mut self, action: UpdateMsg) {
         let UpdateMsgKind::DetailsToggle(id, action) = action.kind;
         self.dropdown_state.insert(id, action);
     }
 
-    /// Retrieves all image URLs that need to be loaded, returned as a [`HashSet<String>`].
-    ///
-    /// This method gathers all image URLs in the document, which you can:
-    /// 1. Download somehow (pass to an async downloader maybe?)
-    /// 2. Store using, if SVG image, `iced::widget::svg::Handle::from_memory`.
-    ///    - For normal images: `iced::widget::image::Handle::from_bytes`.
-    /// 3. Handle the rendering of these images via [`crate::MarkWidget::on_drawing_image`].
+    /// Retrieves all image URLs that need to be loaded.
     #[must_use]
     pub fn find_image_links(&self) -> HashSet<String> {
         let mut storage = HashSet::new();
-        find_image_links(&self.dom.document, &mut storage);
+        match &self.source {
+            MarkStateSource::LegacyDom(dom) => {
+                find_image_links(&dom.document, &mut storage);
+            }
+            MarkStateSource::Blocks(cache) => {
+                for entry in cache.entries() {
+                    if let CachedBlock::Dom(dom) = entry {
+                        find_image_links(&dom.document, &mut storage);
+                    }
+                }
+            }
+        }
         storage
     }
 }
@@ -109,6 +152,18 @@ impl MarkState {
 impl Default for MarkState {
     fn default() -> Self {
         Self::with_html("")
+    }
+}
+
+fn scan_block_cache_dropdowns(
+    cache: &BlockRenderCache,
+    dropdown_state: &mut HashMap<usize, bool>,
+    dropdown_counter: &mut usize,
+) {
+    for index in 0..cache.len() {
+        if let Some(CachedBlock::Dom(dom)) = cache.entry(index) {
+            find_state(&dom.document, dropdown_state, dropdown_counter);
+        }
     }
 }
 

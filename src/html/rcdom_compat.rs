@@ -1,10 +1,66 @@
-//! Temporary `RcDom` → [`HtmlFragment`] bridge during iced backend migration.
+//! `RcDom` ↔ [`HtmlFragment`] bridge during iced backend migration.
 
 use std::sync::Arc;
 
+use html5ever::{ParseOpts, tendril::TendrilSink};
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
 
 use crate::html::fragment::{HtmlAttr, HtmlFragment, HtmlNode, HtmlTag, NodeId};
+
+/// Parse an HTML document string into [`RcDom`] for the iced backend.
+#[must_use]
+pub fn html_to_rcdom(input: &str) -> RcDom {
+    html5ever::parse_document(RcDom::default(), ParseOpts::default())
+        .from_utf8()
+        .read_from(&mut input.as_bytes())
+        .expect("reading from UTF-8 bytes cannot fail")
+}
+
+/// Serialize a fragment to HTML and parse it into [`RcDom`].
+#[must_use]
+pub fn fragment_to_rcdom(fragment: &HtmlFragment) -> RcDom {
+    let mut html = String::new();
+    for root in fragment.roots() {
+        write_fragment_node(&mut html, fragment, *root);
+    }
+    if html.is_empty() {
+        html_to_rcdom("<div></div>")
+    } else {
+        html_to_rcdom(&html)
+    }
+}
+
+fn write_fragment_node(out: &mut String, fragment: &HtmlFragment, id: NodeId) {
+    let Some(node) = fragment.node(id) else {
+        return;
+    };
+    match node {
+        HtmlNode::Text(text) => out.push_str(text),
+        HtmlNode::Comment(comment) => {
+            out.push_str("<!--");
+            out.push_str(comment);
+            out.push_str("-->");
+        }
+        HtmlNode::Element { tag, attrs, children } => {
+            out.push('<');
+            out.push_str(tag.as_str());
+            for attr in attrs {
+                out.push(' ');
+                out.push_str(&attr.name);
+                out.push_str("=\"");
+                out.push_str(&attr.value);
+                out.push('"');
+            }
+            out.push('>');
+            for child in children {
+                write_fragment_node(out, fragment, *child);
+            }
+            out.push_str("</");
+            out.push_str(tag.as_str());
+            out.push('>');
+        }
+    }
+}
 
 /// Convert a parsed [`RcDom`] tree into a backend-agnostic [`HtmlFragment`].
 #[must_use]
@@ -67,7 +123,7 @@ fn convert_node(node: &Handle, fragment: &mut HtmlFragment) -> Option<NodeId> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use html5ever::{ParseOpts, tendril::TendrilSink};
+    use html5ever::ParseOpts;
 
     fn parse_html(input: &str) -> RcDom {
         use html5ever::{local_name, ns, QualName, tendril::TendrilSink};

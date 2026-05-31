@@ -28,13 +28,13 @@ enum SinkData {
     Text(RefCell<StrTendril>),
     Comment(StrTendril),
     Doctype {
-        name: StrTendril,
-        public_id: StrTendril,
-        system_id: StrTendril,
+        _name: StrTendril,
+        _public_id: StrTendril,
+        _system_id: StrTendril,
     },
     ProcessingInstruction {
-        target: StrTendril,
-        contents: StrTendril,
+        _target: StrTendril,
+        _contents: StrTendril,
     },
 }
 
@@ -214,18 +214,17 @@ impl TreeSink for FragmentSink {
 
     fn create_pi(&self, target: StrTendril, data: StrTendril) -> Handle {
         Self::node(SinkData::ProcessingInstruction {
-            target,
-            contents: data,
+            _target: target,
+            _contents: data,
         })
     }
 
     fn append(&self, parent: &Handle, child: NodeOrText<Handle>) {
-        if let NodeOrText::AppendText(text) = &child {
-            if let Some(last) = parent.0.children.borrow().last() {
-                if Self::append_to_existing_text(last, text) {
-                    return;
-                }
-            }
+        if let NodeOrText::AppendText(text) = &child
+            && let Some(last) = parent.0.children.borrow().last()
+            && Self::append_to_existing_text(last, text)
+        {
+            return;
         }
         Self::append(
             parent,
@@ -262,9 +261,9 @@ impl TreeSink for FragmentSink {
         Self::append(
             &self.document,
             Self::node(SinkData::Doctype {
-                name,
-                public_id,
-                system_id,
+                _name: name,
+                _public_id: public_id,
+                _system_id: system_id,
             }),
         );
     }

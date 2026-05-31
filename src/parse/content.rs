@@ -28,6 +28,7 @@ pub fn block_content_from_events(
 }
 
 /// Detect whether events or block kind indicate raw HTML content.
+#[cfg(feature = "stream")]
 pub fn events_contain_html(events: &[Event<'static>]) -> bool {
     events.iter().any(|event| {
         matches!(
@@ -38,6 +39,7 @@ pub fn events_contain_html(events: &[Event<'static>]) -> bool {
 }
 
 /// Build HTML fragment content from raw source when no compiled events exist.
+#[cfg(feature = "stream")]
 pub fn html_block_content(source: Arc<str>) -> BlockContent {
     BlockContent::Html(HtmlFragment::from_html(&source))
 }

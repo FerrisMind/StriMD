@@ -76,8 +76,6 @@ impl Document {
 mod tests {
     use super::*;
     use crate::core::block::BlockKind;
-    use crate::options::LegacyFallbackPolicy;
-
     #[test]
     fn document_blocks_are_stable() {
         let doc = Document::parse("# Hi\n\nParagraph.", ParseProfile::GitHubPreview)
@@ -107,6 +105,8 @@ mod tests {
     #[cfg(feature = "_legacy_comrak")]
     #[test]
     fn prefer_legacy_policy_can_be_selected_via_options() {
+        use crate::options::LegacyFallbackPolicy;
+
         let source = "See [[WikiPage]] for details.\n";
         let mut options = ParseOptions::for_profile(ParseProfile::GitHubPreview);
         options.legacy_fallback = LegacyFallbackPolicy::PreferLegacyUntilParity;
