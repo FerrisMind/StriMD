@@ -1,7 +1,7 @@
 use iced::{Element, Font, Length, Padding, Pixels, border, widget};
 use markup5ever_rcdom::{Node, NodeData};
 
-use crate::{
+use super::{
     structs::{
         ChildAlignment, ChildDataFlags, ImageInfo, MarkWidget, RenderedSpan, UpdateMsg,
         UpdateMsgKind,

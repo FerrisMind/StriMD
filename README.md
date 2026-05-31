@@ -73,27 +73,45 @@ const YOUR_TEXT: &str = "Hello from **markdown** and <b>HTML</b>!";
 
 </details>
 
-**Note:** Markdown support is optional and you can disable the `markdown`
-feature to have more lightweight, HTML-only support.
+**Note:** Legacy Markdown-via-comrak support uses the `_legacy_comrak` feature (enabled
+by default during migration). Headless consumers should disable default features and
+enable only the supported public features they need.
 
 ## How does this work
 
-Markdown (if present) is converted to HTML using `comrak`.
-HTML is parsed using [`html5ever`](https://crates.io/crates/html5ever/),
-from the [Servo](https://servo.org/) project.
-The resulting DOM is rendered **directly to `iced` widgets** using a custom renderer.
+The default **iced** backend still renders HTML via [`html5ever`](https://crates.io/crates/html5ever/)
+and `MarkWidget`. New **headless** APIs parse Markdown into backend-agnostic
+[`Document`](https://docs.rs/frostmark/latest/frostmark/struct.Document.html) /
+[`StreamDocument`](https://docs.rs/frostmark/latest/frostmark/struct.StreamDocument.html)
+blocks using **pulldown-cmark** and vendored **mdstream** for streaming.
 
-## Crate Features
+## Supported Crate Features (public contract)
 
-All enabled by default
+| Feature | Purpose |
+|---------|---------|
+| `no_iced` | Headless mode — use with `default-features = false` |
+| `static` | Full-document parse and `Document::to_html()` export |
+| `stream` | Incremental LLM streaming via `StreamDocument` |
 
-- `markdown` : Adds markdown support alongside HTML.
-  Disable this if you want HTML-only support, or a lighter program.
-- Built-in iced features (can be disabled if you wish)
-  - `iced-wgpu` : wgpu rendering backend
-  - `iced-tiny-skia` : tiny-skia rendering backend
-  - `iced-tokio` : tokio async runtime
-  - `iced-windowing` : x11 and wayland backends
+Example headless dependency:
+
+```toml
+frostmark = { path = "...", default-features = false, features = ["no_iced", "static", "stream"] }
+```
+
+## Implementation-only features (unsupported)
+
+These exist for migration and may change without notice:
+
+- `_iced_backend` — default iced renderer (on by default)
+- `_legacy_comrak` — comrak fallback until pulldown parity
+- `_html_preprocess` — optional `lol_html` rewrite layer
+- `_rcdom_compat` — `markup5ever_rcdom` bridge for the iced HTML path
+
+## Iced passthrough features
+
+- `markdown` — alias for `_legacy_comrak`
+- `iced-wgpu`, `iced-tiny-skia`, `iced-tokio`, `iced-windowing` — forwarded to `iced`
 
 ## TODO
 

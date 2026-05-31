@@ -3,7 +3,7 @@ use std::rc::Rc;
 use iced::{Length, widget};
 use markup5ever_rcdom::{Node, NodeData};
 
-use crate::{
+use crate::backends::iced::{
     MarkWidget,
     renderer::{ValidTheme, get_attr},
     structs::{ChildAlignment, ChildData, ChildDataFlags, RenderedSpan},

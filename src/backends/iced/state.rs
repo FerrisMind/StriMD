@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use html5ever::{ParseOpts, tendril::TendrilSink};
 use markup5ever_rcdom::RcDom;
 
-use crate::structs::{UpdateMsg, UpdateMsgKind};
+use super::structs::{UpdateMsg, UpdateMsgKind};
 
 /// The state of the document.
 ///
@@ -64,9 +64,9 @@ impl MarkState {
     /// it may introduce formatting bugs when
     /// dealing with pure HTML documents.
     #[must_use]
-    #[cfg(feature = "markdown")]
+    #[cfg(feature = "_legacy_comrak")]
     pub fn with_html_and_markdown(input: &str) -> Self {
-        let html = crate::comrak::markdown_to_html(input);
+        let html = crate::parse::comrak_migration::markdown_to_html(input);
         Self::with_html(&html)
     }
 
@@ -75,7 +75,7 @@ impl MarkState {
     ///
     /// Useful for things like messaging apps.
     #[must_use]
-    #[cfg(feature = "markdown")]
+    #[cfg(feature = "_legacy_comrak")]
     pub fn with_markdown_only(input: &str) -> Self {
         let mut out = String::new();
         _ = comrak::html::escape(&mut out, input);

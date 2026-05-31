@@ -1,4 +1,6 @@
-use crate::{MarkState, UpdateMsg, comrak};
+use super::{MarkState, UpdateMsg};
+#[cfg(feature = "_legacy_comrak")]
+use crate::parse::comrak_migration as comrak;
 
 /// A fenced or indented code block extracted from markdown source.
 #[derive(Debug, Clone, PartialEq, Eq)]

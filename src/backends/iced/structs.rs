@@ -6,7 +6,7 @@ use iced::{
     widget,
 };
 
-use crate::state::MarkState;
+use super::state::MarkState;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ChildData {

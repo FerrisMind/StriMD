@@ -1,7 +1,7 @@
 use iced::widget;
 use markup5ever_rcdom::{Node, NodeData};
 
-use crate::{
+use crate::backends::iced::{
     MarkWidget, RubyMode,
     renderer::{ValidTheme, is_node_useless},
     structs::{ChildData, Emp, RenderedSpan},

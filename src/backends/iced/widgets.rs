@@ -1,6 +1,6 @@
 use iced::{Element, Font, Length, advanced, widget};
 
-use crate::structs::FStyleLinkButton;
+use super::structs::FStyleLinkButton;
 
 pub fn link<'a, M: 'a, T, R: advanced::Renderer + 'a, F>(
     e: impl Into<Element<'a, M, T, R>>,

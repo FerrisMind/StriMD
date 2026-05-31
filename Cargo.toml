@@ -3,7 +3,7 @@ name = "frostmark"
 version = "0.3.1-dev"
 edition = "2024"
 authors = ["Mrmayman <navneetkrishna22@gmail.com>"]
-description = "HTML/Markdown renderer for the Iced GUI framework"
+description = "HTML/Markdown renderer for the Iced GUI framework with headless static and streaming modes"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Mrmayman/frostmark"
 documentation = "https://docs.rs/frostmark"
@@ -12,12 +12,15 @@ keywords = ["gui", "iced", "markdown", "html", "renderer"]
 categories = ["gui"]
 
 [dependencies]
-iced = { version = "0.14", default-features = false, features = ["advanced"] }
-html5ever = "0.36"
-markup5ever_rcdom = "0.36"
 bitflags = "2"
+pulldown-cmark = "0.13"
 
+iced = { version = "0.14", optional = true, default-features = false, features = ["advanced"] }
+html5ever = { version = "0.36", optional = true }
+markup5ever_rcdom = { version = "0.36", optional = true }
 comrak = { version = "0.49", default-features = false, optional = true }
+lol_html = { version = "2", optional = true }
+mdstream = { path = "../mdstream/mdstream", optional = true }
 
 [dev-dependencies]
 open = "5"
@@ -25,8 +28,25 @@ tokio = "1"
 reqwest = { version = "0.13" }
 
 [features]
-default = ["markdown", "iced-wgpu", "iced-tiny-skia", "iced-tokio", "iced-windowing"]
-markdown = ["dep:comrak"]
+default = ["_iced_backend", "_legacy_comrak"]
+
+# Supported public features (stable contract)
+no_iced = []
+stream = ["dep:mdstream", "mdstream/pulldown"]
+static = ["dep:html5ever"]
+
+# Implementation-detail features (unsupported for downstream use)
+_iced_backend = [
+    "dep:iced",
+    "dep:html5ever",
+    "_rcdom_compat",
+]
+_legacy_comrak = ["dep:comrak", "dep:markup5ever_rcdom"]
+_html_preprocess = ["dep:lol_html"]
+_rcdom_compat = ["dep:markup5ever_rcdom"]
+
+# Backward-compatible aliases
+markdown = ["_legacy_comrak"]
 iced-wgpu = ["iced/wgpu"]
 iced-tiny-skia = ["iced/tiny-skia"]
 iced-tokio = ["iced/tokio"]
@@ -34,16 +54,20 @@ iced-windowing = ["iced/x11", "iced/wayland"]
 
 [[example]]
 name = "hello"
-required-features = []
+required-features = ["_iced_backend"]
+
+[[example]]
+name = "styling"
+required-features = ["_iced_backend"]
 
 [[example]]
 name = "live_edit"
-required-features = []
+required-features = ["_iced_backend"]
 
 [[example]]
 name = "image"
-required-features = ["iced/image", "iced/tokio"]
+required-features = ["_iced_backend", "iced/image", "iced/tokio"]
 
 [[example]]
 name = "large_readme"
-required-features = ["iced/image", "iced/tokio", "iced/svg"]
+required-features = ["_iced_backend", "iced/image", "iced/tokio", "iced/svg"]

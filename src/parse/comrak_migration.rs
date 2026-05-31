@@ -1,7 +1,13 @@
+//! Legacy comrak Markdown→HTML path retained until pulldown parity gates pass.
+
+/// Convert Markdown to HTML using comrak with frostmark's legacy extension set.
+#[must_use]
 pub fn markdown_to_html(input: &str) -> String {
     comrak::markdown_to_html(input, &options())
 }
 
+/// Legacy comrak options used by the migration path.
+#[must_use]
 pub fn options() -> comrak::Options<'static> {
     comrak::Options {
         extension: comrak::options::Extension {

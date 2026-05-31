@@ -1,21 +1,60 @@
 #![doc = include_str!("../README.md")]
 
-mod renderer;
-mod state;
-mod structs;
-mod style;
-mod widgets;
+//! # Feature contract
+//!
+//! Supported user-facing Cargo features:
+//!
+//! | Feature | Purpose |
+//! |---------|---------|
+//! | `no_iced` | Headless mode: disable the default iced backend |
+//! | `static` | Full-document parse and HTML export |
+//! | `stream` | Incremental LLM streaming via vendored mdstream |
+//!
+//! Implementation-detail features (`_iced_backend`, `_legacy_comrak`, `_html_preprocess`,
+//! `_rcdom_compat`) exist for migration only and are **not** part of the stable public contract.
 
-#[cfg(feature = "markdown")]
-mod comrak;
-#[cfg(feature = "markdown")]
-mod document;
+#[cfg(all(feature = "no_iced", feature = "_iced_backend"))]
+compile_error!(
+    "`no_iced` requires disabling frostmark default features: \
+     use `default-features = false, features = [\"no_iced\", ...]`"
+);
 
-pub use state::MarkState;
-pub use structs::{ImageInfo, MarkWidget, RubyMode, UpdateMsg};
-pub use style::Style;
+#[cfg(not(any(feature = "no_iced", feature = "_iced_backend")))]
+compile_error!(
+    "Select either the default iced backend or explicit headless mode via `no_iced`."
+);
 
-#[cfg(feature = "markdown")]
-pub use comrak::markdown_to_html;
-#[cfg(feature = "markdown")]
-pub use document::{CodeBlock, MarkDocument, MarkSegment};
+pub mod core;
+pub mod html;
+pub mod options;
+pub mod parse;
+pub mod profile;
+
+#[cfg(all(feature = "_iced_backend", not(feature = "no_iced")))]
+pub mod backends;
+
+pub use core::{
+    BlockContent, BlockId, BlockKind, BlockStatus, CompiledMarkdown, Document, HtmlFragmentError,
+    ParseError, RenderBlock, RenderError, UnsupportedReason,
+};
+pub use options::{LegacyFallbackPolicy, ParseOptions, RawHtmlPolicy};
+pub use profile::ParseProfile;
+
+#[cfg(feature = "stream")]
+pub use core::{PendingPolicy, StreamDocument, StreamOptions, StreamPatch, StreamUpdate};
+
+#[cfg(feature = "static")]
+pub use html::fragment::{HtmlAttr, HtmlFragment, HtmlNode, HtmlTag, NodeId};
+
+// Legacy iced API (default builds)
+#[cfg(all(feature = "_iced_backend", not(feature = "no_iced")))]
+pub use backends::iced::{
+    ImageInfo, MarkState, MarkWidget, RubyMode, Style, UpdateMsg,
+};
+
+#[cfg(all(
+    feature = "_iced_backend",
+    feature = "_legacy_comrak",
+    not(feature = "no_iced")
+))]
+pub use backends::iced::{CodeBlock, MarkDocument, MarkSegment, markdown_to_html};
