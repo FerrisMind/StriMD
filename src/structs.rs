@@ -79,6 +79,7 @@ pub enum UpdateMsgKind {
 
 type FClickLink<M> = Box<dyn Fn(String) -> M>;
 type FDrawImage<'a, M, T> = Box<dyn Fn(ImageInfo) -> Element<'static, M, T> + 'a>;
+type FDrawPreBlock<'a, M, T> = Box<dyn Fn(Element<'a, M, T>) -> Element<'a, M, T> + 'a>;
 type FUpdate<M> = Arc<dyn Fn(UpdateMsg) -> M>;
 pub(crate) type FStyleLinkButton<T> =
     Arc<dyn Fn(&T, widget::button::Status) -> widget::button::Style + 'static>;
@@ -113,6 +114,7 @@ pub struct MarkWidget<'a, Message, Theme = iced::Theme> {
 
     pub(crate) fn_clicking_link: Option<FClickLink<Message>>,
     pub(crate) fn_drawing_image: Option<FDrawImage<'a, Message, Theme>>,
+    pub(crate) fn_drawing_pre_block: Option<FDrawPreBlock<'a, Message, Theme>>,
     pub(crate) fn_update: Option<FUpdate<Message>>,
     pub(crate) fn_style_link_button: Option<FStyleLinkButton<Theme>>,
 
@@ -135,6 +137,7 @@ impl<'a, M: 'a, T: 'a> MarkWidget<'a, M, T> {
             font_mono: Font::MONOSPACE,
             fn_clicking_link: None,
             fn_drawing_image: None,
+            fn_drawing_pre_block: None,
             fn_update: None,
             fn_style_link_button: None,
             style: None,
@@ -260,6 +263,16 @@ impl<'a, M: 'a, T: 'a> MarkWidget<'a, M, T> {
         f: impl Fn(ImageInfo) -> Element<'static, M, T> + 'a,
     ) -> Self {
         self.fn_drawing_image = Some(Box::new(f));
+        self
+    }
+
+    /// Wrap rendered `<pre><code>` block content with app-specific styling.
+    #[must_use]
+    pub fn on_drawing_pre_block(
+        mut self,
+        f: impl Fn(Element<'a, M, T>) -> Element<'a, M, T> + 'a,
+    ) -> Self {
+        self.fn_drawing_pre_block = Some(Box::new(f));
         self
     }
 

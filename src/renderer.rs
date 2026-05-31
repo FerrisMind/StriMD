@@ -130,7 +130,7 @@ where
                 data.alignment = Some(ChildAlignment::Center);
                 self.render_children(node, data)
             }
-            "pre" => self.render_children(node, data.insert(ChildDataFlags::KEEP_WHITESPACE)),
+            "pre" => self.render_pre_block(node, data),
 
             "h1" => self.render_children(node, data.heading(1)),
             "h2" => self.render_children(node, data.heading(2)),
@@ -492,6 +492,18 @@ where
             self.render_children(meaningful[0], data)
         } else {
             self.render_children(node, data)
+        }
+    }
+
+    fn render_pre_block(&mut self, node: &Node, data: ChildData) -> RenderedSpan<'a, M, T> {
+        let content = self
+            .render_children(node, data.insert(ChildDataFlags::KEEP_WHITESPACE))
+            .render();
+
+        if let Some(draw) = &self.fn_drawing_pre_block {
+            draw(content).into()
+        } else {
+            content.into()
         }
     }
 

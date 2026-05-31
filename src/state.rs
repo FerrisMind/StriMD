@@ -66,29 +66,7 @@ impl MarkState {
     #[must_use]
     #[cfg(feature = "markdown")]
     pub fn with_html_and_markdown(input: &str) -> Self {
-        let html = comrak::markdown_to_html(
-            input,
-            &comrak::Options {
-                extension: comrak::options::Extension {
-                    strikethrough: true,
-                    cjk_friendly_emphasis: true,
-                    tasklist: true,
-                    superscript: true,
-                    subscript: true,
-                    underline: true,
-                    table: true,
-                    ..Default::default()
-                },
-                parse: comrak::options::Parse::default(),
-                render: comrak::options::Render {
-                    // Our renderer doesn't have the
-                    // vulnerabilities of a browser
-                    r#unsafe: true,
-                    ..Default::default()
-                },
-            },
-        );
-
+        let html = crate::comrak::markdown_to_html(input);
         Self::with_html(&html)
     }
 
