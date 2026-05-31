@@ -22,3 +22,22 @@ fn document_with_table_and_code_produces_blocks() {
     assert!(doc.blocks().iter().any(|b| b.kind == BlockKind::CodeFence));
     let _state = MarkState::from_document(&doc);
 }
+
+#[cfg(feature = "stream")]
+#[test]
+fn streamed_gfm_table_syncs_to_mark_state() {
+    use frostmark::{StreamDocument, StreamOptions};
+
+    let source = include_str!("fixtures/stream_table.md");
+    let mut stream = StreamDocument::new(StreamOptions::chat());
+    for chunk in source.as_bytes().chunks(5) {
+        stream.append(std::str::from_utf8(chunk).unwrap_or(""));
+    }
+    assert!(
+        stream.blocks().any(|b| b.kind == BlockKind::Table)
+            || stream.pending().is_some_and(|p| p.kind == BlockKind::Table)
+    );
+
+    let mut state = MarkState::from_blocks(&[]);
+    state.sync_from_stream(&stream);
+}

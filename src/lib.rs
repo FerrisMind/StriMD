@@ -1,4 +1,11 @@
-#![doc = include_str!("../README.md")]
+#![cfg_attr(
+    all(feature = "no_iced", not(feature = "_iced_backend")),
+    doc = include_str!("../docs/README_HEADLESS.md")
+)]
+#![cfg_attr(
+    not(all(feature = "no_iced", not(feature = "_iced_backend"))),
+    doc = include_str!("../README.md")
+)]
 
 //! # Feature contract
 //!

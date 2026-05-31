@@ -31,7 +31,10 @@ jobs:
       - name: Headless check
         run: cargo check --no-default-features --features no_iced,static,stream --all-targets
       - name: Headless tests
-        run: cargo test --no-default-features --features no_iced,static,stream --lib --tests
+        run: |
+          cargo test --no-default-features --features no_iced,static,stream --lib --tests
+          cargo test --no-default-features --features no_iced,static,stream --test downstream_static
+          cargo test --no-default-features --features no_iced,stream --test downstream_stream
       - name: Headless examples
         run: |
           cargo run --example static_export --no-default-features --features no_iced,static > /dev/null

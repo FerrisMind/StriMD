@@ -65,6 +65,13 @@ run_combo_test "no_iced + static tests" \
 run_combo_test "no_iced + stream tests" \
   --no-default-features --features no_iced,stream
 
+echo ""
+echo "========================================"
+echo "== headless downstream integration tests"
+echo "========================================"
+cargo test --no-default-features --features no_iced,static --test downstream_static
+cargo test --no-default-features --features no_iced,stream --test downstream_stream
+
 # --- Default tests + stream integration ---
 echo ""
 echo "========================================"

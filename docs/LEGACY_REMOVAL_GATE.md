@@ -4,8 +4,8 @@ Do **not** remove `_legacy_comrak` or `_rcdom_compat` until every item below is 
 
 ## `_legacy_comrak` removal checklist
 
-- [ ] `cargo test` with default features passes
-- [ ] `tests/static_parity.rs`: all fixtures pass without comrak fallback
+- [x] `cargo test` with default features passes
+- [x] `tests/static_parity.rs`: all fixtures pass without comrak fallback
 - [ ] `tests/static_parity.rs::wikilink_fixture_reports_shadow_mismatch_without_fallback` shows **no** `shadow_mismatch` OR wikilink parity is accepted and documented
 - [ ] `Document::diagnostics()` reports `ParseBackend::Pulldown` for application preview samples
 - [ ] `rg "comrak|_legacy_comrak" src Cargo.toml` returns no production references after removal
@@ -13,9 +13,9 @@ Do **not** remove `_legacy_comrak` or `_rcdom_compat` until every item below is 
 
 ## `_rcdom_compat` / `markup5ever_rcdom` removal checklist
 
-- [ ] `tests/html_fragment_parity.rs` passes for all supported HTML fixtures
-- [ ] `tests/static_parity.rs` raw HTML fixtures pass with TreeSink-only path
-- [ ] Iced renderer uses `HtmlFragment` traversal without `RcDom` in production (`tests/iced_regression.rs` green)
+- [x] `tests/html_fragment_parity.rs` passes for all supported HTML fixtures
+- [x] `tests/static_parity.rs` raw HTML fixtures pass with TreeSink-only path
+- [ ] Iced renderer uses `HtmlFragment` traversal without `RcDom` in production (`tests/iced_regression.rs` green; block cache still compiles to RcDom)
 - [ ] `rg "markup5ever_rcdom|RcDom" src Cargo.toml` returns only test remnants or none
 - [ ] Table/details/image fixtures pass for static and streaming paths
 

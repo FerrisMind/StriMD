@@ -13,14 +13,14 @@ Render rich text in your `iced` app at lightning-fast speeds using plain HTML or
 1. Create a [`MarkState`] and **store it in your application state**.
 
 ```no_run
-use frostmark::MarkState;
+#[cfg(feature = "_iced_backend")]
+fn iced_usage() {
+    use frostmark::MarkState;
 
-let text = "Hello from **markdown** and <b>HTML</b>!";
-
-let state = MarkState::with_html_and_markdown(text);
-// or if you just want HTML
-let state = MarkState::with_html(text);
-// put this in your App struct
+    let text = "Hello from **markdown** and <b>HTML</b>!";
+    let _state = MarkState::with_html_and_markdown(text);
+    let _state = MarkState::with_html(text);
+}
 ```
 
 2. In your `view` function use a [`MarkWidget`].
@@ -42,37 +42,44 @@ You can find runnable examples [here](examples/README.md)
 <summary>Click to expand a full example</summary>
 
 ```no_run
-use frostmark::{MarkState, MarkWidget};
-use iced::{widget, Element, Task};
+#[cfg(feature = "_iced_backend")]
+fn iced_full_example() {
+    use frostmark::{MarkState, MarkWidget};
+    use iced::{widget, Element, Task};
 
-#[derive(Debug, Clone)]
-enum Message {}
+    const YOUR_TEXT: &str = "Hello from **markdown** and <b>HTML</b>!";
 
-struct App {
-    state: MarkState,
-}
+    #[derive(Debug, Clone)]
+    enum Message {}
 
-impl App {
-    fn update(&mut self, _: Message) -> Task<Message> {
-        Task::none()
+    struct App {
+        state: MarkState,
     }
 
-    fn view(&self) -> Element<'_, Message> {
-        widget::container(MarkWidget::new(&self.state))
-            .padding(10)
-            .into()
+    impl App {
+        fn update(&mut self, _: Message) -> Task<Message> {
+            Task::none()
+        }
+
+        fn view(&self) -> Element<'_, Message> {
+            widget::container(MarkWidget::new(&self.state))
+                .padding(10)
+                .into()
+        }
+    }
+
+    fn main() {
+        iced::application(
+            || App {
+                state: MarkState::with_html_and_markdown(YOUR_TEXT),
+            },
+            App::update,
+            App::view,
+        )
+        .run()
+        .unwrap();
     }
 }
-
-fn main() {
-    iced::application(
-        || App { state: MarkState::with_html_and_markdown(YOUR_TEXT) },
-        App::update,
-        App::view
-    ).run().unwrap();
-}
-
-const YOUR_TEXT: &str = "Hello from **markdown** and <b>HTML</b>!";
 ```
 
 </details>
@@ -114,6 +121,8 @@ cargo run --example stream_chat --no-default-features --features no_iced,stream
 ```
 
 CI runs `./scripts/verify-features.sh` and headless jobs via `.github/workflows/ci.yml`.
+
+See [docs/MIGRATION.md](docs/MIGRATION.md) for the pulldown/mdstream migration guide and [docs/LEGACY_REMOVAL_GATE.md](docs/LEGACY_REMOVAL_GATE.md) for comrak/RcDom removal criteria.
 
 ## Implementation-only features (unsupported)
 
