@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/logo.svg" alt="StriMD logo" width="120" />
+</p>
+
 # StriMD
 
 **HTML + Markdown viewer for [iced](https://iced.rs/) — static, streaming, and headless**
