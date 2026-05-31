@@ -3,7 +3,7 @@ use std::{ops::Add, sync::Arc};
 use bitflags::bitflags;
 use iced::{
     Element, Font,
-    widget::{self, text_editor},
+    widget,
 };
 
 use crate::state::MarkState;
@@ -74,7 +74,6 @@ pub struct UpdateMsg {
 
 #[derive(Debug, Clone)]
 pub enum UpdateMsgKind {
-    TextEditor(String, text_editor::Action),
     DetailsToggle(usize, bool),
 }
 
@@ -299,7 +298,7 @@ impl<'a, M: 'a, T: 'a> MarkWidget<'a, M, T> {
     ///
     /// # Notes:
     /// - This feature is optional but recommended.
-    ///   Without it, some features like code block selection may be disabled.
+    ///   Without it, `<details>` toggles will not work.
     /// - It takes in a closure that returns the message to pass when the state is updated.
     #[must_use]
     pub fn on_updating_state(mut self, f: impl Fn(UpdateMsg) -> M + 'static) -> Self {

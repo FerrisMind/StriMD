@@ -1,4 +1,4 @@
-use iced::{Element, Font, Length, Padding, widget};
+use iced::{Element, Font, Length, Padding, Pixels, border, widget};
 use markup5ever_rcdom::{Node, NodeData};
 
 use crate::{
@@ -19,7 +19,6 @@ pub trait ValidTheme:
     widget::button::Catalog
     + widget::text::Catalog
     + widget::rule::Catalog
-    + widget::text_editor::Catalog
     + widget::checkbox::Catalog
 {
 }
@@ -27,7 +26,6 @@ impl<T> ValidTheme for T where
     T: widget::button::Catalog
         + widget::text::Catalog
         + widget::rule::Catalog
-        + widget::text_editor::Catalog
         + widget::checkbox::Catalog
 {
 }
@@ -190,22 +188,15 @@ where
 
             "ul" => {
                 data.li_ordered_number = None;
-                self.render_children(node, data)
+                self.render_list(node, data)
             }
             "ol" => {
                 let start = get_attr(&attrs, "start")
                     .and_then(|n| n.parse::<usize>().ok())
                     .unwrap_or(1);
-                self.render_children(node, data.ordered_from(start))
+                self.render_list(node, data.ordered_from(start))
             }
-            "li" => {
-                let bullet = if let Some(num) = data.li_ordered_number {
-                    widget::text!("{num}. ")
-                } else {
-                    widget::text("- ")
-                };
-                widget::row![bullet, self.render_children(node, data).render()].into()
-            }
+            "li" => self.render_list_item(node, data),
 
             "ruby" => self.draw_ruby(node, data),
             "table" => self.draw_table(node, data),
@@ -447,24 +438,105 @@ where
         }
     }
 
-    fn codeblock(&self, code: String, size: f32, inline: bool) -> RenderedSpan<'a, M, T> {
-        if let (false, Some(state), Some(select)) = (
-            inline,
-            self.state.selection_state.get(&code),
-            self.fn_update.clone(),
-        ) {
-            widget::text_editor(state)
-                .size(size)
-                .padding(5)
-                .font(self.font_mono)
-                .on_action(move |action| {
-                    select(UpdateMsg {
-                        kind: UpdateMsgKind::TextEditor(code.clone(), action),
-                    })
-                })
-                .into()
+    fn render_list(&mut self, node: &Node, data: ChildData) -> RenderedSpan<'a, M, T> {
+        let indent = self.paragraph_spacing.unwrap_or(5.0);
+        let items = self.render_children(node, data);
+
+        widget::column![items.render()]
+            .padding(Padding::default().left(indent))
+            .into()
+    }
+
+    fn render_list_item(&mut self, node: &Node, data: ChildData) -> RenderedSpan<'a, M, T> {
+        let marker_gap = self.paragraph_spacing.unwrap_or(5.0);
+        let content = self.render_list_item_content(node, data);
+
+        if list_item_has_task_marker(node) {
+            content
+        } else if let Some(num) = data.li_ordered_number {
+            widget::row![
+                widget::text(format!("{num}.")).size(self.text_size),
+                content.render(),
+            ]
+            .spacing(marker_gap)
+            .align_y(iced::Alignment::Start)
+            .into()
         } else {
-            RenderedSpan::Spans(vec![widget::span(code).size(size).font(self.font_mono)])
+            widget::row![
+                widget::text("•").size(self.text_size),
+                content.render(),
+            ]
+            .spacing(marker_gap)
+            .align_y(iced::Alignment::Start)
+            .into()
+        }
+    }
+
+    fn render_list_item_content(
+        &mut self,
+        node: &Node,
+        data: ChildData,
+    ) -> RenderedSpan<'a, M, T> {
+        let children = node.children.borrow();
+        let meaningful: Vec<_> = children
+            .iter()
+            .filter(|child| !is_node_useless(child))
+            .collect();
+
+        if meaningful.len() == 1
+            && matches!(
+                &meaningful[0].data,
+                NodeData::Element { name, .. } if &*name.local == "p"
+            )
+        {
+            self.render_children(meaningful[0], data)
+        } else {
+            self.render_children(node, data)
+        }
+    }
+
+    fn codeblock(&self, code: String, size: f32, inline: bool) -> RenderedSpan<'a, M, T> {
+        let style = self.style;
+        let inline_background = style.and_then(|s| s.inline_code_background);
+        let inline_color = style.and_then(|s| s.inline_code_color);
+        let text_color = style.and_then(|s| s.text_color);
+
+        if inline {
+            // VS Code webview: padding 1×3px, radius 4px, textPreformat colors.
+            // iced expands highlight padding outward and overlaps adjacent spaces, so we
+            // add thin external spacers and keep the pill height tight with absolute line height.
+            const INLINE_CODE_V_PAD: f32 = 1.0;
+            const INLINE_CODE_H_PAD: f32 = 3.0;
+
+            let mut code_span = widget::span(code)
+                .size(size)
+                .font(self.font_mono)
+                .line_height(Pixels(size + INLINE_CODE_V_PAD * 2.0));
+
+            if let Some(color) = inline_color {
+                code_span = code_span.color(color);
+            }
+            if let Some(background) = inline_background {
+                code_span = code_span
+                    .background(background)
+                    .border(border::rounded(4.0))
+                    .padding(Padding {
+                        top: INLINE_CODE_V_PAD,
+                        right: INLINE_CODE_H_PAD,
+                        bottom: INLINE_CODE_V_PAD,
+                        left: INLINE_CODE_H_PAD,
+                    });
+            }
+
+            let gap = widget::span("\u{2009}").size(size);
+            RenderedSpan::Spans(vec![gap.clone(), code_span, gap])
+        } else {
+            // VS Code markdown.css: pre code has no pill — mono + editor foreground only.
+            let mut span = widget::span(code).size(size).font(self.font_mono);
+            if let Some(color) = text_color.or(inline_color) {
+                span = span.color(color);
+            }
+            RenderedSpan::Spans(vec![span])
         }
     }
 }
@@ -565,6 +637,16 @@ where
         let node = &value.state.dom.document;
         value.traverse_node(node, ChildData::default()).render()
     }
+}
+
+fn list_item_has_task_marker(node: &Node) -> bool {
+    node.children.borrow().iter().any(|child| {
+        let NodeData::Element { name, attrs, .. } = &child.data else {
+            return false;
+        };
+
+        &*name.local == "input" && get_attr(&attrs.borrow(), "type") == Some("checkbox")
+    })
 }
 
 fn clean_whitespace(input: &str) -> String {

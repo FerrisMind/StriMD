@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
 use html5ever::{ParseOpts, tendril::TendrilSink};
-use iced::widget;
 use markup5ever_rcdom::RcDom;
 
 use crate::structs::{UpdateMsg, UpdateMsgKind};
@@ -27,7 +26,6 @@ use crate::structs::{UpdateMsg, UpdateMsgKind};
 pub struct MarkState {
     pub(crate) dom: RcDom,
 
-    pub(crate) selection_state: HashMap<String, widget::text_editor::Content>,
     pub(crate) dropdown_state: HashMap<usize, bool>,
 }
 
@@ -48,20 +46,12 @@ impl MarkState {
             // Will not panic as reading from &[u8] cannot fail
             .unwrap();
 
-        let mut selection_state = HashMap::new();
         let mut dropdown_state = HashMap::new();
         let mut dropdown_counter = 0;
-        find_state(
-            &dom.document,
-            &mut selection_state,
-            &mut dropdown_state,
-            &mut dropdown_counter,
-            false,
-        );
+        find_state(&dom.document, &mut dropdown_state, &mut dropdown_counter);
 
         Self {
             dom,
-            selection_state,
             dropdown_state,
         }
     }
@@ -118,22 +108,9 @@ impl MarkState {
     ///
     /// Call this method after receiving an update message
     /// from [`crate::MarkWidget::on_updating_state`].
-    /// It currently handles the update of text selection
-    /// within code blocks, but additional use cases may be
-    /// supported in the future.
     pub fn update(&mut self, action: UpdateMsg) {
-        match action.kind {
-            UpdateMsgKind::TextEditor(code, action) => {
-                if !action.is_edit()
-                    && let Some(n) = self.selection_state.get_mut(&code)
-                {
-                    n.perform(action);
-                }
-            }
-            UpdateMsgKind::DetailsToggle(id, action) => {
-                self.dropdown_state.insert(id, action);
-            }
-        }
+        let UpdateMsgKind::DetailsToggle(id, action) = action.kind;
+        self.dropdown_state.insert(id, action);
     }
 
     /// Retrieves all image URLs that need to be loaded, returned as a [`HashSet<String>`].
@@ -159,51 +136,21 @@ impl Default for MarkState {
 
 fn find_state(
     node: &markup5ever_rcdom::Node,
-    selection_state: &mut HashMap<String, widget::text_editor::Content>,
     dropdown_state: &mut HashMap<usize, bool>,
     dropdown_counter: &mut usize,
-    scan_text: bool,
 ) {
     let borrow = node.children.borrow();
     match &node.data {
-        markup5ever_rcdom::NodeData::Element { name, .. } if &name.local == "code" => {
-            for child in &*borrow {
-                find_state(
-                    child,
-                    selection_state,
-                    dropdown_state,
-                    dropdown_counter,
-                    true,
-                );
-            }
-        }
         markup5ever_rcdom::NodeData::Element { name, .. } if &name.local == "details" => {
             dropdown_state.insert(*dropdown_counter, false);
             *dropdown_counter += 1;
             for child in &*borrow {
-                find_state(
-                    child,
-                    selection_state,
-                    dropdown_state,
-                    dropdown_counter,
-                    false,
-                );
+                find_state(child, dropdown_state, dropdown_counter);
             }
-        }
-        markup5ever_rcdom::NodeData::Text { contents } if scan_text => {
-            let contents = contents.borrow().to_string();
-            let v = widget::text_editor::Content::with_text(&contents);
-            selection_state.insert(contents.clone(), v);
         }
         _ => {
             for child in &*borrow {
-                find_state(
-                    child,
-                    selection_state,
-                    dropdown_state,
-                    dropdown_counter,
-                    scan_text,
-                );
+                find_state(child, dropdown_state, dropdown_counter);
             }
         }
     }

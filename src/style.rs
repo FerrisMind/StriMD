@@ -12,4 +12,10 @@ pub struct Style {
     ///
     /// Default: `#F7D84B`
     pub highlight_color: Option<iced::Color>,
+    /// Background color for inline `<code>` snippets.
+    pub inline_code_background: Option<iced::Color>,
+    /// Text color for inline `<code>` snippets.
+    pub inline_code_color: Option<iced::Color>,
+    /// Background color for block `<pre><code>` sections.
+    pub code_block_background: Option<iced::Color>,
 }
