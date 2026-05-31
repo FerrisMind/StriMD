@@ -8,7 +8,9 @@ use crate::core::block::{
 use crate::core::error::ParseError;
 use crate::core::ids::BlockId;
 use crate::options::ParseOptions;
-use crate::parse::content::block_content_from_events;
+use crate::parse::content::{
+    block_content_from_events, code_text_from_events, is_code_fence_slice,
+};
 use crate::profile::ParseProfile;
 
 /// Collect pulldown events into backend-agnostic [`RenderBlock`] values.
@@ -41,7 +43,11 @@ fn group_events_into_blocks(
         let (kind, end) = classify_block_start(&events[index..]);
         let end = index + end.max(1);
         let slice = &events[index..end];
-        let block_source = Arc::<str>::from(event_slice_source(source, slice));
+        let block_source = if is_code_fence_slice(slice) {
+            Arc::<str>::from(code_text_from_events(slice))
+        } else {
+            Arc::<str>::from(event_slice_source(source, slice))
+        };
         let content = block_content_from_events(slice, block_source.clone(), raw_html);
 
         blocks.push(RenderBlock {

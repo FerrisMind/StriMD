@@ -25,6 +25,8 @@ iced = { version = "0.14", optional = true, default-features = false, features =
     "wgpu",
     "tiny-skia",
     "thread-pool",
+    "markdown",
+    "highlighter",
 ] }
 html5ever = { version = "0.36", optional = true }
 markup5ever_rcdom = { version = "0.36", optional = true }

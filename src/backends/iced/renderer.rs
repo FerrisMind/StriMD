@@ -1,9 +1,11 @@
-use iced::{Element, Font, Length, Padding, Pixels, border, widget};
+use iced::{Element, Font, Length, Padding, Pixels, border, padding, widget};
+use iced::widget::markdown::{self, Uri as MarkdownUri};
 
 use crate::html::block_cache::CachedBlock;
 
 use super::{
     dom::{self, DomRef},
+    state::MarkState,
     structs::{
         ChildAlignment, ChildData, ChildDataFlags, ImageInfo, MarkWidget, RenderedSpan, UpdateMsg,
         UpdateMsgKind,
@@ -22,6 +24,7 @@ pub trait ValidTheme:
     + widget::text::Catalog
     + widget::rule::Catalog
     + widget::checkbox::Catalog
+    + widget::markdown::Catalog
 {
 }
 impl<T> ValidTheme for T where
@@ -29,6 +32,7 @@ impl<T> ValidTheme for T where
         + widget::text::Catalog
         + widget::rule::Catalog
         + widget::checkbox::Catalog
+        + widget::markdown::Catalog
 {
 }
 
@@ -38,6 +42,9 @@ where
 {
     pub(crate) fn traverse_dom(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
         if node.is_document_root() {
+            if let Some(name) = node.tag_name() {
+                return self.render_html_inner(name, node, data);
+            }
             return self.render_children(node, data);
         }
 
@@ -528,9 +535,18 @@ where
             let gap = widget::span("\u{2009}").size(size);
             RenderedSpan::Spans(vec![gap.clone(), code_span, gap])
         } else {
-            let mut span = widget::span(code).size(size).font(self.font_mono);
+            let mut span = widget::span(code)
+                .size(size)
+                .font(self.font_mono)
+                .line_height(Pixels(size * 1.25));
             if let Some(color) = text_color.or(inline_color) {
                 span = span.color(color);
+            }
+            if let Some(background) = style.and_then(|s| s.code_block_background) {
+                span = span
+                    .background(background)
+                    .padding(Padding::new(8.0))
+                    .border(border::rounded(4.0));
             }
             RenderedSpan::Spans(vec![span])
         }
@@ -603,18 +619,18 @@ where
 {
     fn render_from_block_cache(&mut self) -> Element<'a, M, T> {
         let spacing = self.paragraph_spacing.unwrap_or(5.0);
-        let cache = match &self.state.cache {
+        let state: &'a MarkState = self.state;
+        let cache = match &state.cache {
             Some(cache) => cache,
             None => return widget::Column::new().into(),
         };
-
         let mut column = widget::Column::new().spacing(spacing).width(Length::Fill);
         for index in 0..cache.len() {
             let span = match cache.entry(index) {
                 Some(CachedBlock::Fragment(fragment)) => {
                     self.render_fragment_roots(fragment, ChildData::default())
                 }
-                Some(CachedBlock::Code(code)) => self.render_fenced_code_block(code),
+                Some(CachedBlock::Code(code)) => Self::render_fenced_code_block(&*self, code),
                 Some(CachedBlock::Empty) => RenderedSpan::None,
                 None => RenderedSpan::None,
             };
@@ -626,14 +642,66 @@ where
         column.into()
     }
 
-    fn render_fenced_code_block(&self, block: &CachedCodeBlock) -> RenderedSpan<'a, M, T> {
+    fn markdown_code_settings(&self) -> markdown::Settings {
+        let (inline_code_bg, inline_code_color) = self
+            .style
+            .map(|s| (s.inline_code_background, s.inline_code_color))
+            .unwrap_or((None, None));
+        let link_color = self
+            .style
+            .and_then(|s| s.link_color)
+            .unwrap_or_else(|| iced::Color::from_rgb8(0x5A, 0x6B, 0x9E));
+        let style = markdown::Style {
+            font: self.font,
+            inline_code_highlight: markdown::Highlight {
+                background: inline_code_bg
+                    .unwrap_or_else(|| iced::Color::from_rgb8(0x2a, 0x2a, 0x2a))
+                    .into(),
+                border: border::rounded(4.0),
+            },
+            inline_code_padding: padding::left(3).right(3).top(1).bottom(1),
+            inline_code_color: inline_code_color.unwrap_or(iced::Color::WHITE),
+            inline_code_font: self.font_mono,
+            code_block_font: self.font_mono,
+            link_color,
+        };
+        let mut settings = markdown::Settings::with_text_size(Pixels(self.text_size), style);
+        settings.spacing = Pixels(self.paragraph_spacing.unwrap_or(5.0));
+        settings.code_size = Pixels(self.text_size);
+        settings
+    }
+
+    fn render_fenced_code_block(
+        &self,
+        block: &'a CachedCodeBlock,
+    ) -> RenderedSpan<'a, M, T> {
+        if let Some(lines) = block
+            .markdown_items
+            .iter()
+            .find_map(|item| match item {
+                markdown::Item::CodeBlock { lines, .. } => Some(lines.as_slice()),
+                _ => None,
+            }) {
+            let settings = self.markdown_code_settings();
+            // Links inside fenced code are rare; avoid capturing `&self` in the closure
+            // so the returned `Element` can live for `'a` (cache-backed `lines`).
+            let element = markdown::code_block(settings, lines, |_: MarkdownUri| -> M {
+                panic!("unexpected link in fenced code block");
+            });
+            let element = if let Some(draw) = &self.fn_drawing_pre_block {
+                draw(element)
+            } else {
+                element
+            };
+            return element.into();
+        }
+
         let size = self.text_size;
         let code = block.code.clone();
         if let Some(draw) = &self.fn_drawing_pre_block {
-            draw(self.codeblock(code, size, false).render()).into()
-        } else {
-            self.codeblock(code, size, false)
+            return draw(self.codeblock(code, size, false).render()).into();
         }
+        self.codeblock(code, size, false)
     }
 }
 

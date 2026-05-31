@@ -1,6 +1,7 @@
 //! Compile-once cache mapping [`RenderBlock`] values to [`HtmlFragment`] trees for rendering.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use pulldown_cmark::{html, Event, Options, Parser};
 
@@ -19,6 +20,8 @@ pub(crate) struct CachedCodeBlock {
     #[allow(dead_code)]
     pub(crate) language: Option<String>,
     pub(crate) code: String,
+    /// Pre-parsed iced markdown items (highlighted lines for [`iced::widget::markdown::code_block`]).
+    pub(crate) markdown_items: Arc<Vec<iced::widget::markdown::Item>>,
 }
 
 /// One compiled block ready for DOM traversal.
@@ -130,9 +133,15 @@ impl BlockRenderCache {
             }
             BlockContent::Html(fragment) => CachedBlock::Fragment(fragment.clone()),
             BlockContent::Code { lang, .. } => {
+                let code = block.source.trim_end_matches('\n').to_string();
+                let markdown_items = Arc::new(crate::backends::iced::iced_markdown_items_for_codeblock(
+                    lang.as_deref(),
+                    &code,
+                ));
                 CachedBlock::Code(CachedCodeBlock {
                     language: lang.clone(),
-                    code: block.source.trim_end_matches('\n').to_string(),
+                    code,
+                    markdown_items,
                 })
             }
             BlockContent::PendingMarkdown => {
@@ -405,6 +414,164 @@ mod tests {
         assert_eq!(cache.len(), rebuilt.len());
         assert!(cache_entry_contains_tag(&cache, 2, "a"));
         assert!(cache_entry_contains_tag(&rebuilt, 2, "a"));
+    }
+
+    fn fragment_root_tags(fragment: &HtmlFragment) -> Vec<String> {
+        fragment
+            .roots()
+            .iter()
+            .filter_map(|&id| match fragment.node(id) {
+                Some(crate::html::fragment::HtmlNode::Element { tag, .. }) => {
+                    Some(tag.as_str().to_string())
+                }
+                Some(crate::html::fragment::HtmlNode::Text(t)) => {
+                    Some(format!("text:{}", &t[..t.len().min(40)]))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn fragment_has_tag(fragment: &HtmlFragment, expected: &str) -> bool {
+        fn walk(fragment: &HtmlFragment, id: crate::html::fragment::NodeId, expected: &str) -> bool {
+            match fragment.node(id) {
+                Some(crate::html::fragment::HtmlNode::Element { tag, children, .. }) => {
+                    tag.as_str() == expected
+                        || children
+                            .iter()
+                            .any(|&c| walk(fragment, c, expected))
+                }
+                _ => false,
+            }
+        }
+        fragment
+            .roots()
+            .iter()
+            .any(|&r| walk(fragment, r, expected))
+    }
+
+    #[test]
+    fn hello_fixture_blocks_contain_heading_hr_and_blockquote() {
+        const HELLO: &str = r"
+# Hello, World!
+This is a markdown renderer <b>with inline HTML support!</b>
+- You can mix and match markdown and HTML together
+<hr>
+
+```rust
+App { state: 1 }
+```
+
+## Note
+
+> <b>Fun fact</b>: This is all built on top of existing iced widgets.
+>
+> No new widgets were made for this.
+";
+        let doc = crate::core::document::Document::parse(HELLO, ParseProfile::GitHubPreview)
+            .expect("parse");
+        let cache = BlockRenderCache::from_document(&doc);
+        let mut kinds = Vec::new();
+        let mut has_h1 = false;
+        let mut has_h2 = false;
+        let mut has_hr = false;
+        let mut has_blockquote = false;
+        for (i, block) in doc.blocks().iter().enumerate() {
+            kinds.push(format!("{:?}", block.kind));
+            if let Some(CachedBlock::Fragment(fragment)) = cache.entry(i) {
+                let _roots = fragment_root_tags(fragment);
+                has_h1 |= fragment_has_tag(fragment, "h1");
+                has_h2 |= fragment_has_tag(fragment, "h2");
+                has_hr |= fragment_has_tag(fragment, "hr");
+                has_blockquote |= fragment_has_tag(fragment, "blockquote");
+            }
+        }
+        assert!(
+            doc.blocks().iter().any(|b| b.kind == BlockKind::Heading),
+            "expected heading blocks, kinds={kinds:?}"
+        );
+        assert!(has_h1, "fragment missing h1, kinds={kinds:?}");
+        assert!(has_h2, "fragment missing h2, kinds={kinds:?}");
+        assert!(has_hr, "fragment missing hr, kinds={kinds:?}");
+        assert!(has_blockquote, "fragment missing blockquote, kinds={kinds:?}");
+        for (i, block) in doc.blocks().iter().enumerate() {
+            if let Some(CachedBlock::Fragment(fragment)) = cache.entry(i) {
+                if block.kind == BlockKind::HtmlBlock {
+                    assert!(
+                        fragment.roots().iter().any(|&r| {
+                            matches!(
+                                fragment.node(r),
+                                Some(crate::html::fragment::HtmlNode::Element { tag, .. })
+                                    if tag.as_str() == "hr"
+                            )
+                        }),
+                        "hr html block should have hr element root"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn hello_example_code_fence_in_cached_code_block() {
+        const HELLO: &str = r"
+# Hello
+```rust
+fn demo() {}
+```
+";
+        let doc =
+            crate::core::document::Document::parse(HELLO, ParseProfile::GitHubPreview).expect("parse");
+        let cache = BlockRenderCache::from_document(&doc);
+        let idx = doc
+            .blocks()
+            .iter()
+            .position(|b| b.kind == BlockKind::CodeFence)
+            .expect("hello has code fence");
+        assert!(matches!(cache.entry(idx), Some(CachedBlock::Code(_))));
+    }
+
+    #[test]
+    fn hello_code_fence_routes_to_cached_code_block() {
+        const SNIPPET: &str = "```rust\nfn main() {}\n```\n";
+        let doc =
+            crate::core::document::Document::parse(SNIPPET, ParseProfile::GitHubPreview).expect("parse");
+        let cache = BlockRenderCache::from_document(&doc);
+        let code_block = doc
+            .blocks()
+            .iter()
+            .find(|b| b.kind == BlockKind::CodeFence)
+            .expect("code fence block");
+        assert!(matches!(
+            &code_block.content,
+            BlockContent::Code {
+                lang: Some(lang),
+                ..
+            } if lang == "rust"
+        ));
+        let idx = doc
+            .blocks()
+            .iter()
+            .position(|b| b.kind == BlockKind::CodeFence)
+            .unwrap();
+        let CachedBlock::Code(c) = cache.entry(idx).expect("cache entry") else {
+            panic!("expected CachedBlock::Code");
+        };
+        assert!(
+            c.code.contains("fn main"),
+            "code body wrong: {:?}",
+            c.code
+        );
+        assert!(
+            !c.code.contains("# Hello"),
+            "code must not be full document source"
+        );
+        assert!(
+            c.markdown_items
+                .iter()
+                .any(|item| matches!(item, iced::widget::markdown::Item::CodeBlock { .. })),
+            "expected iced markdown CodeBlock item for syntax highlighting"
+        );
     }
 
     #[test]

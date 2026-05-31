@@ -9,6 +9,7 @@ mod style;
 mod widgets;
 
 pub use legacy_document::{CodeBlock, MarkDocument, MarkSegment};
+pub(crate) use legacy_document::iced_markdown_items_for_codeblock;
 pub use state::MarkState;
 pub use structs::{ImageInfo, MarkWidget, RubyMode, UpdateMsg};
 pub use style::Style;

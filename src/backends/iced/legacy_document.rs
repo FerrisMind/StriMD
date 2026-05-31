@@ -23,9 +23,28 @@ impl CodeBlock {
     /// Reconstructs a fenced markdown snippet suitable for `iced::widget::markdown::Content::parse`.
     #[must_use]
     pub fn fence_markdown(&self) -> String {
-        let language = self.language.as_deref().unwrap_or("");
-        wrap_fenced_code(self.fence_char, self.open_fence_len, language, &self.code)
+        fence_markdown_for_codeblock(self.language.as_deref(), &self.code)
     }
+}
+
+/// Builds a fenced markdown snippet for [`iced::widget::markdown::Content::parse`].
+#[must_use]
+pub fn fence_markdown_for_codeblock(language: Option<&str>, body: &str) -> String {
+    let language = normalize_code_language(language);
+    let lang = language.as_deref().unwrap_or("");
+    let body = body.strip_suffix('\n').unwrap_or(body);
+    wrap_fenced_code('`', 3, lang, body)
+}
+
+/// Parses a code fence into iced markdown items (syntax highlighting when `highlighter` is enabled).
+#[must_use]
+pub fn iced_markdown_items_for_codeblock(
+    language: Option<&str>,
+    code: &str,
+) -> Vec<iced::widget::markdown::Item> {
+    use iced::widget::markdown;
+    let fence = fence_markdown_for_codeblock(language, code);
+    markdown::Content::parse(&fence).items().to_vec()
 }
 
 /// One renderable part of a split markdown document.

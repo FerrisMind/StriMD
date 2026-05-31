@@ -161,6 +161,17 @@ impl HtmlFragment {
                 _ => break,
             }
         }
+        self.roots = self
+            .roots
+            .iter()
+            .copied()
+            .filter(|&id| {
+                !matches!(
+                    self.node(id),
+                    Some(HtmlNode::Text(text)) if text.trim().is_empty()
+                )
+            })
+            .collect();
         self
     }
 }
@@ -176,6 +187,17 @@ mod tests {
         let root = fragment.push_element(HtmlTag::new("p"), Vec::new(), vec![text]);
         fragment.push_root(root);
         assert_eq!(fragment.roots().len(), 1);
+    }
+
+    #[cfg(feature = "static")]
+    #[test]
+    fn normalize_roots_strips_whitespace_only_text_siblings() {
+        let fragment = HtmlFragment::from_html("<h1>Hi</h1>\n");
+        assert_eq!(fragment.roots().len(), 1);
+        match fragment.node(fragment.roots()[0]) {
+            Some(HtmlNode::Element { tag, .. }) => assert_eq!(tag.as_str(), "h1"),
+            other => panic!("expected h1 root, got {other:?}"),
+        }
     }
 
     #[cfg(feature = "static")]

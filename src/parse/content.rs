@@ -1,10 +1,38 @@
 use std::sync::Arc;
 
-use pulldown_cmark::{Event, Tag};
+use pulldown_cmark::{CodeBlockKind, Event, Tag};
 
 use crate::core::block::{BlockContent, CompiledMarkdown};
 use crate::html::sanitize;
 use crate::options::RawHtmlPolicy;
+
+/// True when the slice is a single fenced or indented code block.
+pub(crate) fn is_code_fence_slice(slice: &[Event<'static>]) -> bool {
+    matches!(slice.first(), Some(Event::Start(Tag::CodeBlock(_))))
+}
+
+/// Concatenate `Text` events inside a code block slice.
+pub(crate) fn code_text_from_events(slice: &[Event<'static>]) -> String {
+    slice
+        .iter()
+        .filter_map(|event| match event {
+            Event::Text(text) => Some(text.as_ref()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+/// Language tag from a fenced code block, if present.
+pub(crate) fn code_lang_from_events(slice: &[Event<'static>]) -> Option<String> {
+    let Event::Start(Tag::CodeBlock(kind)) = slice.first()? else {
+        return None;
+    };
+    match kind {
+        CodeBlockKind::Fenced(lang) if !lang.is_empty() => Some(lang.to_string()),
+        _ => None,
+    }
+}
 
 /// Derive block content from pulldown events, routing raw HTML per [`RawHtmlPolicy`].
 pub fn block_content_from_events(
@@ -12,6 +40,12 @@ pub fn block_content_from_events(
     source: Arc<str>,
     raw_html: RawHtmlPolicy,
 ) -> BlockContent {
+    if is_code_fence_slice(slice) {
+        return BlockContent::Code {
+            lang: code_lang_from_events(slice),
+            complete: true,
+        };
+    }
     if is_standalone_html_block(slice)
         && let Some(html) = extract_html_from_events(slice)
     {
@@ -175,6 +209,27 @@ mod tests {
             crate::options::RawHtmlPolicy::Preserve,
         );
         assert!(matches!(content, BlockContent::Markdown(_)));
+    }
+
+    #[test]
+    fn code_fence_routes_to_block_content_code() {
+        let source = "```rust\nfn main() {}\n```\n";
+        let events: Vec<_> = Parser::new_ext(source, Options::all())
+            .map(|e| e.into_static())
+            .collect();
+        let content = block_content_from_events(
+            &events,
+            Arc::from(source),
+            crate::options::RawHtmlPolicy::Preserve,
+        );
+        assert!(matches!(
+            content,
+            BlockContent::Code {
+                lang: Some(ref l),
+                complete: true,
+            } if l == "rust"
+        ));
+        assert_eq!(code_text_from_events(&events), "fn main() {}\n");
     }
 
     #[test]
