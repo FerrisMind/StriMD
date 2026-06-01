@@ -59,6 +59,7 @@ where
                         .align_x(iced::Alignment::Center)
                         .into(),
                     Emp::NonEmpty,
+                    0.0,
                 );
 
                 acc + unit
@@ -101,5 +102,30 @@ where
             units.push(current);
         }
         units
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::html::fragment::HtmlFragment;
+
+    #[test]
+    fn ruby_units_render_without_extra_inline_gap() {
+        let fragment = HtmlFragment::from_html("<p><ruby>東<rt>とう</rt>京<rt>きょう</rt></ruby></p>");
+        let state = crate::backends::iced::MarkState::from_blocks(&[]);
+        let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
+        let paragraph = crate::backends::iced::dom::DomRef::fragment_roots(&fragment)[0];
+        let ruby = paragraph
+            .children()
+            .into_iter()
+            .find(|child| child.tag_name() == Some("ruby"))
+            .expect("ruby element");
+
+        let rendered = widget.traverse_dom(ruby, ChildData::default());
+        assert!(
+            matches!(rendered, RenderedSpan::Elem(_, _, gap) if gap == 0.0),
+            "expected ruby inline element without extra gap, got {rendered:?}"
+        );
     }
 }

@@ -1,6 +1,6 @@
 //! Extend pulldown block slices through unclosed HTML containers (`<details>`, `<center>`, etc.).
 
-use pulldown_cmark::{Event, Tag};
+use pulldown_cmark::{Event, Tag, TagEnd};
 
 use crate::parse::content::extract_html_from_events;
 
@@ -42,6 +42,10 @@ impl ContainerState {
             let Some(tag_end) = html[i..].find('>') else {
                 break;
             };
+            if tag_is_wrapped_in_backticks(bytes, i, tag_end) {
+                i += tag_end + 1;
+                continue;
+            }
             let tag = &html[i..=i + tag_end];
             if is_open_tag(tag, "details") {
                 self.details_depth += 1;
@@ -53,7 +57,7 @@ impl ContainerState {
                 self.center_depth = self.center_depth.saturating_sub(1);
             } else if is_open_tag(tag, "div") {
                 self.div_depth += 1;
-            } else if is_close_tag(tag, "div") {
+            } else if is_close_tag(tag, "div") && self.div_depth > 0 {
                 self.div_depth = self.div_depth.saturating_sub(1);
             }
             i += tag_end + 1;
@@ -99,6 +103,14 @@ fn next_event_chunk_len(events: &[Event<'static>]) -> usize {
 }
 
 fn block_extent_for_tag(events: &[Event<'static>], tag: &Tag<'_>) -> usize {
+    if matches!(tag, Tag::HtmlBlock) {
+        return events
+            .iter()
+            .position(|event| matches!(event, Event::End(pulldown_cmark::TagEnd::HtmlBlock)))
+            .map(|i| i + 1)
+            .unwrap_or(events.len());
+    }
+
     let end_tag: pulldown_cmark::TagEnd = tag.clone().into();
     let mut depth = 0usize;
     for (i, event) in events.iter().enumerate() {
@@ -116,14 +128,29 @@ fn block_extent_for_tag(events: &[Event<'static>], tag: &Tag<'_>) -> usize {
     events.len()
 }
 
-fn html_event_extent(events: &[Event<'static>]) -> usize {
+pub(crate) fn html_event_extent(events: &[Event<'static>]) -> usize {
     let mut extent = 0usize;
+    let mut state = ContainerState::default();
+    let mut saw_tracked_wrapper = false;
+
     for event in events {
         match event {
-            Event::Html(_) | Event::InlineHtml(_) => extent += 1,
+            Event::Html(_) | Event::InlineHtml(_) => {
+                if extent > 0 && saw_tracked_wrapper && !state.needs_more() {
+                    break;
+                }
+
+                let event_slice = std::slice::from_ref(event);
+                if let Some(html) = extract_html_from_events(event_slice) {
+                    saw_tracked_wrapper |= html_contains_tracked_wrapper(&html);
+                    state.scan_html(&html);
+                }
+                extent += 1;
+            }
             _ => break,
         }
     }
+
     extent.max(1)
 }
 
@@ -167,6 +194,45 @@ fn is_close_tag(tag: &str, name: &str) -> bool {
         && tag_name_terminator(rest.as_bytes().get(name.len()).copied())
 }
 
+fn html_contains_tracked_wrapper(html: &str) -> bool {
+    let bytes = html.as_bytes();
+    let mut i = 0usize;
+
+    while i < bytes.len() {
+        if bytes[i] != b'<' {
+            i += 1;
+            continue;
+        }
+
+        let Some(tag_end) = html[i..].find('>') else {
+            break;
+        };
+        if tag_is_wrapped_in_backticks(bytes, i, tag_end) {
+            i += tag_end + 1;
+            continue;
+        }
+        let tag = &html[i..=i + tag_end];
+        if is_open_tag(tag, "details")
+            || is_close_tag(tag, "details")
+            || is_open_tag(tag, "center")
+            || is_close_tag(tag, "center")
+            || is_open_tag(tag, "div")
+            || is_close_tag(tag, "div")
+        {
+            return true;
+        }
+        i += tag_end + 1;
+    }
+
+    false
+}
+
+fn tag_is_wrapped_in_backticks(bytes: &[u8], start: usize, tag_end: usize) -> bool {
+    let prev = start.checked_sub(1).and_then(|index| bytes.get(index)).copied();
+    let next = bytes.get(start + tag_end + 1).copied();
+    prev == Some(b'`') || next == Some(b'`')
+}
+
 fn tag_name_terminator(next: Option<u8>) -> bool {
     matches!(
         next,
@@ -177,8 +243,39 @@ fn tag_name_terminator(next: Option<u8>) -> bool {
 /// Render mixed markdown + HTML events to one HTML string (for coalesced wrapper blocks).
 #[must_use]
 pub(crate) fn events_to_html(events: &[Event<'static>]) -> String {
+    fn flush_markdown_segment(buf: &mut String, markdown_events: &mut Vec<Event<'static>>) {
+        if markdown_events.is_empty() {
+            return;
+        }
+        pulldown_cmark::html::push_html(buf, markdown_events.drain(..));
+    }
+
     let mut buf = String::new();
-    pulldown_cmark::html::push_html(&mut buf, events.iter().cloned());
+    let mut markdown_events = Vec::new();
+    let mut html_block_depth = 0usize;
+
+    for event in events.iter().cloned() {
+        match event {
+            Event::Start(Tag::HtmlBlock) => {
+                flush_markdown_segment(&mut buf, &mut markdown_events);
+                html_block_depth += 1;
+            }
+            Event::End(TagEnd::HtmlBlock) => {
+                html_block_depth = html_block_depth.saturating_sub(1);
+            }
+            Event::Html(text) | Event::InlineHtml(text) => {
+                flush_markdown_segment(&mut buf, &mut markdown_events);
+                buf.push_str(&text);
+            }
+            Event::Text(text) if html_block_depth > 0 => {
+                flush_markdown_segment(&mut buf, &mut markdown_events);
+                buf.push_str(&text);
+            }
+            other => markdown_events.push(other),
+        }
+    }
+
+    flush_markdown_segment(&mut buf, &mut markdown_events);
     buf
 }
 
@@ -238,12 +335,45 @@ mod tests {
     }
 
     #[test]
-    fn plain_div_open_is_tracked_without_rendering_full_slice() {
-        let state = {
-            let mut state = ContainerState::default();
-            state.scan_html("<div>");
-            state
-        };
+    fn aligned_div_open_is_tracked_without_rendering_full_slice() {
+        let mut state = ContainerState::default();
+        state.scan_html("<div align=\"center\">");
         assert!(state.needs_more());
+    }
+
+    #[test]
+    fn plain_div_open_is_tracked() {
+        let mut state = ContainerState::default();
+        state.scan_html("<div>");
+        assert!(state.needs_more());
+    }
+
+    #[test]
+    fn aligned_div_does_not_capture_following_blocks() {
+        let source = "<div align=\"center\">\n\nCentered\n\n</div>\n\nAfter\n";
+        let events = parse_events(source);
+        let initial_end = html_event_extent(&events);
+        let end = extend_through_unclosed_container(&events, 0, initial_end);
+        let html = events_to_html(&events[..end]);
+
+        assert!(end < events.len(), "aligned div should stop before trailing blocks");
+        assert!(!html.contains("After"));
+    }
+
+    #[test]
+    fn plain_div_mixed_markdown_coalesces_until_closing_tag() {
+        let source = "<div>\n\n**Markdown** inside div.\n\n</div>\n\nAfter\n";
+        let events = parse_events(source);
+        let Event::Start(tag) = &events[0] else {
+            panic!("expected html block start");
+        };
+        let initial_end = block_extent_for_tag(&events, tag);
+        let end = extend_through_unclosed_container(&events, 0, initial_end);
+        let html = events_to_html(&events[..end]);
+
+        assert!(end < events.len(), "plain div should stop before trailing blocks");
+        assert!(html.contains("<div>"));
+        assert!(html.contains("<strong>Markdown</strong>"));
+        assert!(!html.contains("After"));
     }
 }

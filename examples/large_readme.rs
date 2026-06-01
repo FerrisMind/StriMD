@@ -3,6 +3,7 @@ use std::{
     env,
     fmt::Display,
     path::PathBuf,
+    process::Command,
 };
 
 use iced::{
@@ -78,7 +79,7 @@ impl App {
         match msg {
             Message::UpdateState(msg) => self.state.update(msg),
             Message::OpenLink(link) => {
-                _ = open::that(&link);
+                _ = open_link(&link);
             }
             Message::ChangePage(page) => {
                 self.page = page;
@@ -247,10 +248,28 @@ impl Page {
     fn image_search_roots(&self) -> Vec<PathBuf> {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let asset_dir = manifest_dir.join("examples/assets");
-        let mut roots = vec![asset_dir, manifest_dir.clone()];
-        if let Some(parent) = manifest_dir.parent() {
-            roots.push(parent.to_path_buf());
+        let mut roots = vec![asset_dir];
+
+        for dir in manifest_dir.ancestors() {
+            roots.push(dir.to_path_buf());
+            let sibling_nova = dir.join("nova");
+            if sibling_nova.exists() {
+                roots.push(sibling_nova);
+            }
         }
+
+        if let Ok(current_dir) = env::current_dir() {
+            for dir in current_dir.ancestors() {
+                roots.push(dir.to_path_buf());
+                let sibling_nova = dir.join("nova");
+                if sibling_nova.exists() {
+                    roots.push(sibling_nova);
+                }
+            }
+        }
+
+        roots.sort();
+        roots.dedup();
         roots
     }
 }
@@ -275,4 +294,13 @@ fn missing_image_fallback(info: strimd::ImageInfo<'_>) -> String {
         .filter(|alt| !alt.trim().is_empty())
         .unwrap_or(info.url);
     format!("[image unavailable: {label}]")
+}
+
+fn open_link(url: &str) -> Result<(), String> {
+    for browser in ["google-chrome", "chromium", "chromium-browser", "xdg-open"] {
+        if Command::new(browser).arg(url).spawn().is_ok() {
+            return Ok(());
+        }
+    }
+    open::that(url).map_err(|err| err.to_string())
 }

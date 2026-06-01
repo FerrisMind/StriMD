@@ -391,7 +391,7 @@ impl<'a, M: 'a, T: 'a> MarkWidget<'a, M, T> {
 #[derive(Default)]
 pub enum RenderedSpan<'a, M, T> {
     Spans(Vec<widget::text::Span<'a, M, Font>>),
-    Elem(Element<'a, M, T>, Emp),
+    Elem(Element<'a, M, T>, Emp, f32),
     #[default]
     None,
 }
@@ -405,7 +405,7 @@ impl<M, T> std::fmt::Debug for RenderedSpan<'_, M, T> {
                     .entries(spans.iter().map(|n| &*n.text))
                     .finish()
             }
-            RenderedSpan::Elem(_, emp) => write!(f, "Rs::Elem({emp:?})"),
+            RenderedSpan::Elem(_, emp, gap) => write!(f, "Rs::Elem({emp:?}, gap={gap})"),
             RenderedSpan::None => write!(f, "Rs::None"),
         }
     }
@@ -419,8 +419,15 @@ where
     pub fn is_empty(&self) -> bool {
         match self {
             RenderedSpan::Spans(spans) => spans.is_empty(),
-            RenderedSpan::Elem(_, e) => matches!(e, Emp::Empty),
+            RenderedSpan::Elem(_, e, _) => matches!(e, Emp::Empty),
             RenderedSpan::None => true,
+        }
+    }
+
+    pub fn with_gap(self, gap: f32) -> Self {
+        match self {
+            Self::Elem(element, emp, _) => Self::Elem(element, emp, gap),
+            other => other,
         }
     }
 
@@ -428,7 +435,7 @@ where
     pub fn render(self) -> Element<'a, M, T> {
         match self {
             RenderedSpan::Spans(spans) => widget::rich_text(spans).on_link_click(|url| url).into(),
-            RenderedSpan::Elem(element, _) => element,
+            RenderedSpan::Elem(element, _, _) => element,
             RenderedSpan::None => widget::Column::new().into(),
         }
     }
@@ -452,31 +459,34 @@ where
                 Rs::Spans(spans1)
             }
 
-            (r @ Rs::Spans(_), Rs::Elem(element, e)) => Rs::Elem(
+            (r @ Rs::Spans(_), Rs::Elem(element, e, gap)) => Rs::Elem(
                 widget::row![r.render()]
                     .push(e.has_something().then_some(element))
-                    .spacing(5)
+                    .spacing(gap)
                     .wrap()
                     .into(),
                 Emp::NonEmpty,
+                gap,
             ),
-            (Rs::Elem(element, e), r @ Rs::Spans(_)) => Rs::Elem(
+            (Rs::Elem(element, e, gap), r @ Rs::Spans(_)) => Rs::Elem(
                 widget::Row::new()
                     .push(e.has_something().then_some(element))
                     .push(r.render())
-                    .spacing(5)
+                    .spacing(gap)
                     .wrap()
                     .into(),
                 Emp::NonEmpty,
+                gap,
             ),
-            (Rs::Elem(e1, em1), Rs::Elem(e2, em2)) => Rs::Elem(
+            (Rs::Elem(e1, em1, gap1), Rs::Elem(e2, em2, gap2)) => Rs::Elem(
                 widget::Row::new()
                     .push(em1.has_something().then_some(e1))
                     .push(em2.has_something().then_some(e2))
-                    .spacing(5)
+                    .spacing(gap1.max(gap2))
                     .wrap()
                     .into(),
                 Emp::NonEmpty,
+                gap1.max(gap2),
             ),
         }
     }
@@ -489,7 +499,7 @@ where
     E: Into<Element<'a, M, T>>,
 {
     fn from(value: E) -> Self {
-        Self::Elem(value.into(), Emp::NonEmpty)
+        Self::Elem(value.into(), Emp::NonEmpty, 5.0)
     }
 }
 

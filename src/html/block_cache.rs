@@ -984,4 +984,39 @@ fn demo() {}
             "expected centered paragraph or coalesced HTML block for inline markdown inside <center>; got {matches:#?}"
         );
     }
+
+    #[test]
+    fn mpf_alignment_section_does_not_center_details_heading() {
+        use crate::core::document::Document;
+        use crate::profile::ParseProfile;
+
+        let md = include_str!("../../examples/assets/MPF.md");
+        let doc = Document::parse(md, ParseProfile::GitHubPreview).expect("parse");
+        let cache = BlockRenderCache::from_document(&doc);
+        let matches: Vec<_> = doc
+            .blocks()
+            .iter()
+            .enumerate()
+            .filter(|(_, block)| {
+                block.source.contains("Collapsible sections")
+                    || block.source.contains("Deprecated `<center>` block")
+                    || block.source.contains("<div align=\"center\">")
+            })
+            .map(|(index, block)| {
+                (
+                    index,
+                    block.kind,
+                    cache.entry_alignment(index),
+                    block.source.to_string(),
+                )
+            })
+            .collect();
+
+        assert!(
+            matches.iter().any(|(_, _, align, source)| {
+                source.contains("Collapsible sections") && align.is_none()
+            }),
+            "details heading must not inherit center alignment; got {matches:#?}"
+        );
+    }
 }

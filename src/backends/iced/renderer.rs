@@ -12,7 +12,7 @@ use super::{
         UpdateMsg, UpdateMsgKind,
     },
     style::{DEFAULT_INLINE_CODE_BACKGROUND, DEFAULT_INLINE_CODE_FOREGROUND},
-    widgets::{link, link_text, underline},
+    widgets::{KbdStyle, kbd, link, link_text, underline},
 };
 use crate::html::block_cache::CachedCodeBlock;
 use crate::html::fragment::{HtmlFragment, HtmlNode};
@@ -224,48 +224,47 @@ where
     }
 
     fn draw_details(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
+        let dropdown_id = self.current_dropdown_id;
         let e = if let (Some(update), Some(state)) = (
             self.fn_update.clone(),
-            self.state
-                .dropdown_state
-                .get(&self.current_dropdown_id)
-                .copied(),
+            self.state.dropdown_state.get(&dropdown_id).copied(),
         ) {
             let summary = self.get_summary_elements(node, data);
-            let regular_children =
-                self.render_children(node, data.insert(ChildDataFlags::SKIP_SUMMARY));
 
             let umsg = UpdateMsg {
-                kind: UpdateMsgKind::DetailsToggle(self.current_dropdown_id, !state),
+                kind: UpdateMsgKind::DetailsToggle(dropdown_id, !state),
             };
 
-            let link = if let RenderedSpan::Spans(n) = summary {
-                RenderedSpan::Spans(
-                    n.into_iter()
-                        .map(|n| n.link(update(umsg.clone())).underline(true))
-                        .collect(),
-                )
-                .render()
+            let arrow = if state {
+                widget::text("v").size(12)
             } else {
-                widget::mouse_area(underline(summary.render()))
-                    .on_press(update(umsg))
-                    .into()
+                widget::text(">").size(14)
             };
+            let header: Element<'a, M, T> = widget::row![arrow, underline(summary.render())]
+                .spacing(6.0)
+                .align_y(iced::Alignment::Center)
+                .into();
+            let link: Element<'a, M, T> = widget::mouse_area(header)
+                .on_press(update(umsg))
+                .interaction(iced::mouse::Interaction::Pointer)
+                .into();
 
-            widget::stack![
-                widget::column![link]
-                    .push(state.then_some(regular_children.render()))
-                    .padding(Padding::default().left(20).bottom(5)),
-                widget::column![if state {
-                    widget::text("V").size(12)
-                } else {
-                    widget::text(">").size(14)
-                }]
-                .push(state.then_some(widget::rule::vertical(1)))
-                .spacing(5)
-                .padding(Padding::default().left(5).top(if state { 5 } else { 0 })),
-            ]
-            .into()
+            self.current_dropdown_id += 1;
+            let mut column = widget::column![link].spacing(5.0);
+            if state {
+                let regular_children =
+                    self.render_children(node, data.insert(ChildDataFlags::SKIP_SUMMARY));
+                let body = widget::row![
+                    widget::rule::vertical(1),
+                    widget::container(regular_children.render())
+                        .padding(Padding::default().left(8))
+                        .width(Length::Fill)
+                ]
+                .spacing(10.0)
+                .width(Length::Fill);
+                column = column.push(body);
+            }
+            column.padding(Padding::default().bottom(5)).into()
         } else {
             widget::column![
                 widget::rule::vertical(1),
@@ -276,7 +275,12 @@ where
             .spacing(10)
             .into()
         };
-        self.current_dropdown_id += 1;
+        if !matches!(
+            self.fn_update,
+            Some(_) if self.state.dropdown_state.contains_key(&dropdown_id)
+        ) {
+            self.current_dropdown_id += 1;
+        }
         e
     }
 
@@ -284,7 +288,7 @@ where
         let alert = github_alert_kind(node.get_attr("class"));
         let content = self.render_children(node, data);
 
-        let body: Element<'a, M, T> = if let Some(alert) = alert {
+        if let Some(alert) = alert {
             let label: widget::text::Span<'a, M, Font> = widget::span(alert.label())
                 .size(self.text_size * 0.85)
                 .color(alert.color())
@@ -293,58 +297,48 @@ where
                     ..self.font
                 });
 
-            widget::column![widget::rich_text([label]), content.render()]
-                .spacing(6.0)
-                .width(Length::Fill)
-                .into()
-        } else {
-            content.render()
-        };
+            let accent: widget::text::Span<'a, M, Font> = widget::span("▎")
+                .size(self.text_size * 2.2)
+                .color(alert.color());
+            let accent: Element<'a, M, T> = widget::rich_text([accent]).into();
 
-        let rule = if alert.is_some() {
-            widget::rule::vertical(3)
-        } else {
-            widget::rule::vertical(2)
-        };
-
-        widget::stack!(
             widget::row![
-                widget::space().width(10),
-                widget::container(body).width(Length::Fill)
+                widget::container(accent).padding(Padding::default().top(2)),
+                widget::column![widget::rich_text([label]), content.render()]
+                    .spacing(6.0)
+                    .width(Length::Fill)
             ]
-            .width(Length::Fill),
-            rule
-        )
-        .width(Length::Fill)
-        .into()
+            .spacing(8.0)
+            .width(Length::Fill)
+            .into()
+        } else {
+            let body = content.render();
+            widget::stack!(
+                widget::row![
+                    widget::space().width(10),
+                    widget::container(body).width(Length::Fill)
+                ]
+                .width(Length::Fill),
+                widget::rule::vertical(2)
+            )
+            .width(Length::Fill)
+            .into()
+        }
     }
 
     fn draw_kbd(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
-        if let Some(text) = node.text_contents() {
-            let size = text_size_for_data(self.text_size, self.heading_scale, data.heading_weight);
-            let bg = self
-                .style
-                .and_then(|s| s.inline_code_background)
-                .unwrap_or(DEFAULT_INLINE_CODE_BACKGROUND);
-            let fg = self
-                .style
-                .and_then(|s| s.inline_code_color)
-                .unwrap_or(DEFAULT_INLINE_CODE_FOREGROUND);
+        let text = clean_whitespace(&node.accumulated_text());
+        if !text.is_empty() {
+            let bg = iced::Color::from_rgb8(0x1E, 0x29, 0x3B);
+            let fg = iced::Color::from_rgb8(0xF8, 0xFA, 0xFC);
+            let border = iced::Color::from_rgb8(0x33, 0x41, 0x55);
+            let shadow = iced::Color::from_rgba8(0x0F, 0x17, 0x2A, 0x40 as f32 / 255.0);
 
-            return RenderedSpan::Spans(vec![
-                widget::span(clean_whitespace(&text))
-                    .size(size * 0.85)
-                    .font(self.font_mono)
-                    .color(fg)
-                    .background(bg)
-                    .border(border::rounded(4.0))
-                    .padding(Padding {
-                        top: 1.0,
-                        right: 5.0,
-                        bottom: 1.0,
-                        left: 5.0,
-                    }),
-            ]);
+            let element: Element<'a, M, T> = kbd(
+                text,
+                KbdStyle::size2(bg, fg, border, shadow, self.font_mono),
+            );
+            return RenderedSpan::from(element).with_gap(4.0);
         }
 
         self.render_children(node, data.insert(ChildDataFlags::MONOSPACE))
@@ -356,31 +350,51 @@ where
         data: ChildData,
         kind: ScriptKind,
     ) -> RenderedSpan<'a, M, T> {
-        let size = text_size_for_data(self.text_size, self.heading_scale, 7);
-        let padding = kind.padding();
+        let size = text_size_for_data(self.text_size, self.heading_scale, 7) * 0.58;
+        let line_box = self.text_size * 1.1;
 
         if let Some(text) = node.text_contents() {
-            let rendered_text = unicode_script_text(&clean_whitespace(&text), kind);
-            let mut span = widget::span(rendered_text)
+            let mut span: widget::text::Span<'a, M, Font> = widget::span(clean_whitespace(&text))
                 .size(size)
-                .font(self.font)
-                .padding(padding);
+                .font(self.font);
 
             if let Some(color) = self.style.and_then(|s| s.text_color) {
                 span = span.color(color);
             }
-            return RenderedSpan::Spans(vec![span]);
+            let script = widget::rich_text([span]);
+            let element = self.script_box(script.into(), kind, line_box);
+            return RenderedSpan::from(element).with_gap(0.0);
         }
 
         match self.render_children(node, data.heading(7)) {
-            RenderedSpan::Spans(spans) => RenderedSpan::Spans(
-                spans
-                    .into_iter()
-                    .map(|span| span.padding(padding))
-                    .collect(),
-            ),
-            other => widget::container(other.render()).padding(padding).into(),
+            RenderedSpan::Spans(spans) => {
+                let inner = widget::rich_text(spans).on_link_click(|url| url);
+                let element = self.script_box(inner.into(), kind, line_box);
+                RenderedSpan::from(element).with_gap(0.0)
+            }
+            other => {
+                let rendered = other.render();
+                let element = self.script_box(rendered, kind, line_box);
+                RenderedSpan::from(element).with_gap(0.0)
+            }
         }
+    }
+
+    fn script_box(
+        &self,
+        content: Element<'a, M, T>,
+        kind: ScriptKind,
+        line_box: f32,
+    ) -> Element<'a, M, T> {
+        let vertical = match kind {
+            ScriptKind::Sub => iced::alignment::Vertical::Bottom,
+            ScriptKind::Sup => iced::alignment::Vertical::Top,
+        };
+        widget::container(content)
+            .height(line_box)
+            .align_y(vertical)
+            .width(Length::Shrink)
+            .into()
     }
 
     fn get_summary_elements(
@@ -474,14 +488,19 @@ where
                         .collect(),
                 )
             } else if let Some(handler) = msg {
-                let mut button = widget::button(children.render()).padding(0);
-                if !url.is_empty() {
-                    button = button.on_press(handler(url.to_string()));
-                }
                 if let Some(style) = self.fn_style_link_button.clone() {
+                    let mut button = widget::button(children.render()).padding(0);
+                    if !url.is_empty() {
+                        button = button.on_press(handler(url.to_string()));
+                    }
                     button = button.style(move |theme, status| style(theme, status));
+                    button.width(Length::Shrink).into()
+                } else {
+                    widget::mouse_area(children.render())
+                        .on_press(handler(url.to_string()))
+                        .interaction(iced::mouse::Interaction::Pointer)
+                        .into()
                 }
-                button.width(Length::Shrink).into()
             } else {
                 children.render().into()
             }
@@ -551,6 +570,7 @@ where
                     RenderedSpan::Elem(
                         Self::stack_align_in_viewport(badge_row, align),
                         Emp::NonEmpty,
+                        5.0,
                     )
                 } else {
                     RenderedSpan::from(badge_row)
@@ -625,10 +645,12 @@ where
                     .align_x(align.to_horizontal())
                     .into(),
                 Emp::NonEmpty,
+                5.0,
             ),
             other => RenderedSpan::Elem(
                 Self::stack_align_in_viewport(other.render(), align),
                 Emp::NonEmpty,
+                5.0,
             ),
         }
     }
@@ -830,13 +852,14 @@ where
         let text_color = style.and_then(|s| s.text_color);
 
         if inline {
-            const INLINE_CODE_V_PAD: f32 = 1.0;
+            const INLINE_CODE_TOP_PAD: f32 = 1.5;
+            const INLINE_CODE_BOTTOM_PAD: f32 = 0.5;
             const INLINE_CODE_H_PAD: f32 = 3.0;
 
             let mut code_span = widget::span(code)
                 .size(size)
                 .font(self.font_mono)
-                .line_height(Pixels(size + INLINE_CODE_V_PAD * 2.0));
+                .line_height(Pixels(size + INLINE_CODE_TOP_PAD + INLINE_CODE_BOTTOM_PAD));
 
             if let Some(color) = inline_color {
                 code_span = code_span.color(color);
@@ -846,9 +869,9 @@ where
                     .background(background)
                     .border(border::rounded(4.0))
                     .padding(Padding {
-                        top: INLINE_CODE_V_PAD,
+                        top: INLINE_CODE_TOP_PAD,
                         right: INLINE_CODE_H_PAD,
-                        bottom: INLINE_CODE_V_PAD,
+                        bottom: INLINE_CODE_BOTTOM_PAD,
                         left: INLINE_CODE_H_PAD,
                     });
             }
@@ -1297,138 +1320,6 @@ enum ScriptKind {
     Sup,
 }
 
-impl ScriptKind {
-    fn padding(self) -> Padding {
-        match self {
-            Self::Sub => Padding {
-                top: 6.0,
-                right: 0.0,
-                bottom: 0.0,
-                left: 0.0,
-            },
-            Self::Sup => Padding {
-                top: 0.0,
-                right: 0.0,
-                bottom: 6.0,
-                left: 0.0,
-            },
-        }
-    }
-}
-
-fn unicode_script_text(text: &str, kind: ScriptKind) -> String {
-    text.chars()
-        .map(|ch| match kind {
-            ScriptKind::Sub => unicode_sub_char(ch).unwrap_or(ch),
-            ScriptKind::Sup => unicode_sup_char(ch).unwrap_or(ch),
-        })
-        .collect()
-}
-
-fn unicode_sup_char(ch: char) -> Option<char> {
-    Some(match ch {
-        '0' => '⁰',
-        '1' => '¹',
-        '2' => '²',
-        '3' => '³',
-        '4' => '⁴',
-        '5' => '⁵',
-        '6' => '⁶',
-        '7' => '⁷',
-        '8' => '⁸',
-        '9' => '⁹',
-        '+' => '⁺',
-        '-' => '⁻',
-        '=' => '⁼',
-        '(' => '⁽',
-        ')' => '⁾',
-        'a' => 'ᵃ',
-        'b' => 'ᵇ',
-        'c' => 'ᶜ',
-        'd' => 'ᵈ',
-        'e' => 'ᵉ',
-        'f' => 'ᶠ',
-        'g' => 'ᵍ',
-        'h' => 'ʰ',
-        'i' => 'ⁱ',
-        'j' => 'ʲ',
-        'k' => 'ᵏ',
-        'l' => 'ˡ',
-        'm' => 'ᵐ',
-        'n' => 'ⁿ',
-        'o' => 'ᵒ',
-        'p' => 'ᵖ',
-        'r' => 'ʳ',
-        's' => 'ˢ',
-        't' => 'ᵗ',
-        'u' => 'ᵘ',
-        'v' => 'ᵛ',
-        'w' => 'ʷ',
-        'x' => 'ˣ',
-        'y' => 'ʸ',
-        'z' => 'ᶻ',
-        'A' => 'ᴬ',
-        'B' => 'ᴮ',
-        'D' => 'ᴰ',
-        'E' => 'ᴱ',
-        'G' => 'ᴳ',
-        'H' => 'ᴴ',
-        'I' => 'ᴵ',
-        'J' => 'ᴶ',
-        'K' => 'ᴷ',
-        'L' => 'ᴸ',
-        'M' => 'ᴹ',
-        'N' => 'ᴺ',
-        'O' => 'ᴼ',
-        'P' => 'ᴾ',
-        'R' => 'ᴿ',
-        'T' => 'ᵀ',
-        'U' => 'ᵁ',
-        'V' => 'ⱽ',
-        'W' => 'ᵂ',
-        _ => return None,
-    })
-}
-
-fn unicode_sub_char(ch: char) -> Option<char> {
-    Some(match ch {
-        '0' => '₀',
-        '1' => '₁',
-        '2' => '₂',
-        '3' => '₃',
-        '4' => '₄',
-        '5' => '₅',
-        '6' => '₆',
-        '7' => '₇',
-        '8' => '₈',
-        '9' => '₉',
-        '+' => '₊',
-        '-' => '₋',
-        '=' => '₌',
-        '(' => '₍',
-        ')' => '₎',
-        'a' => 'ₐ',
-        'e' => 'ₑ',
-        'h' => 'ₕ',
-        'i' => 'ᵢ',
-        'j' => 'ⱼ',
-        'k' => 'ₖ',
-        'l' => 'ₗ',
-        'm' => 'ₘ',
-        'n' => 'ₙ',
-        'o' => 'ₒ',
-        'p' => 'ₚ',
-        'r' => 'ᵣ',
-        's' => 'ₛ',
-        't' => 'ₜ',
-        'u' => 'ᵤ',
-        'v' => 'ᵥ',
-        'x' => 'ₓ',
-        'b' => 'ᵦ',
-        _ => return None,
-    })
-}
-
 fn clean_whitespace(input: &str) -> String {
     let mut s = input.split_whitespace().collect::<Vec<&str>>().join(" ");
     if let Some(last) = input.chars().next_back()
@@ -1508,16 +1399,30 @@ mod render_tests {
 
     #[test]
     fn inline_html_tags_do_not_render_todo_placeholders() {
-        let fragment =
-            HtmlFragment::from_html("<p><ins>inserted</ins> <sub>sub</sub> <sup>sup</sup></p>");
         let state = MarkState::from_blocks(&[]);
         let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
-        let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
-        let debug = format!("{rendered:?}");
-        assert!(!debug.contains("(TODO)"), "unexpected placeholder: {debug}");
-        assert!(debug.contains("inserted"));
-        assert!(debug.contains("sub"));
-        assert!(debug.contains("sup"));
+
+        let inserted = widget.render_fragment_roots(
+            &HtmlFragment::from_html("<p><ins>inserted</ins></p>"),
+            ChildData::default(),
+        );
+        let inserted_debug = format!("{inserted:?}");
+        assert!(
+            !inserted_debug.contains("(TODO)"),
+            "unexpected placeholder: {inserted_debug}"
+        );
+        assert!(inserted_debug.contains("inserted"));
+
+        let scripts = widget.render_fragment_roots(
+            &HtmlFragment::from_html("<p><sub>sub</sub> <sup>sup</sup></p>"),
+            ChildData::default(),
+        );
+        let scripts_debug = format!("{scripts:?}");
+        assert!(
+            !scripts_debug.contains("(TODO)"),
+            "unexpected placeholder: {scripts_debug}"
+        );
+        assert!(matches!(scripts, RenderedSpan::Elem(_, _, _)));
     }
 
     #[test]
@@ -1552,7 +1457,7 @@ mod render_tests {
         let mut widget = MarkWidget::<String, iced::Theme>::new(&state).on_clicking_link(|url| url);
         let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
         assert!(
-            matches!(rendered, RenderedSpan::Elem(_, _)),
+            matches!(rendered, RenderedSpan::Elem(_, _, _)),
             "expected linked image to render as element"
         );
     }
@@ -1578,11 +1483,20 @@ mod render_tests {
         let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
         let debug = format!("{rendered:?}");
         assert!(!debug.contains("(TODO)"), "unexpected placeholder: {debug}");
-        assert!(debug.contains("Ctrl + Shift + P"));
+        assert!(
+            matches!(rendered, RenderedSpan::Elem(_, _, _)),
+            "expected keycap element, got {debug}"
+        );
     }
 
     #[test]
-    fn sub_and_sup_padding_differ() {
-        assert_ne!(ScriptKind::Sub.padding(), ScriptKind::Sup.padding());
+    fn sub_and_sup_render_without_todo_placeholders() {
+        let fragment = HtmlFragment::from_html("<p><sub>sub</sub> <sup>sup</sup></p>");
+        let state = MarkState::from_blocks(&[]);
+        let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
+        let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
+        let debug = format!("{rendered:?}");
+        assert!(!debug.contains("(TODO)"), "unexpected placeholder: {debug}");
+        assert!(matches!(rendered, RenderedSpan::Elem(_, _, _)));
     }
 }

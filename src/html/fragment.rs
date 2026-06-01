@@ -73,8 +73,11 @@ impl HtmlFragment {
         #[cfg(feature = "static")]
         {
             if let Ok(fragment) = crate::html::treesink::parse_html_fragment(html) {
-                if !fragment.roots().is_empty() || html.trim_start().starts_with("<!--") {
+                if !fragment.roots().is_empty() {
                     return fragment;
+                }
+                if let Some(comment_fragment) = Self::comment_only_fragment(html) {
+                    return comment_fragment;
                 }
             }
         }
@@ -133,6 +136,15 @@ impl HtmlFragment {
         let id = NodeId(self.nodes.len());
         self.nodes.push(node);
         id
+    }
+
+    fn comment_only_fragment(html: &str) -> Option<Self> {
+        let trimmed = html.trim();
+        let inner = trimmed.strip_prefix("<!--")?.strip_suffix("-->")?;
+        let mut fragment = Self::empty();
+        let comment_id = fragment.push_comment(Arc::from(inner));
+        fragment.push_root(comment_id);
+        Some(fragment)
     }
 
     /// Unwrap synthetic html5ever fragment wrappers (`html`, `body`, context `div`).
@@ -222,6 +234,16 @@ mod tests {
         assert!(matches!(
             fragment.roots().first().and_then(|id| fragment.node(*id)),
             Some(HtmlNode::Comment(_)) | None
+        ));
+    }
+
+    #[cfg(feature = "static")]
+    #[test]
+    fn comment_only_html_with_trailing_newline_stays_comment() {
+        let fragment = HtmlFragment::from_html("<!-- hidden -->\n");
+        assert!(matches!(
+            fragment.roots().first().and_then(|id| fragment.node(*id)),
+            Some(HtmlNode::Comment(_))
         ));
     }
 }

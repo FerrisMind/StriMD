@@ -13,8 +13,8 @@ use crate::parse::content::{
 };
 use crate::parse::gfm_preprocess;
 use crate::parse::wrapper_coalesce::{
-    events_to_html, extend_through_unclosed_container, is_coalesced_wrapper_block,
-    starts_unclosed_html_container,
+    events_to_html, extend_through_unclosed_container, html_event_extent,
+    is_coalesced_wrapper_block, starts_unclosed_html_container,
 };
 use crate::profile::ParseProfile;
 
@@ -145,6 +145,14 @@ fn tag_to_kind(tag: &Tag<'_>) -> BlockKind {
 }
 
 fn block_extent_for_tag(events: &[Event<'static>], tag: &Tag<'_>) -> usize {
+    if matches!(tag, Tag::HtmlBlock) {
+        return events
+            .iter()
+            .position(|event| matches!(event, Event::End(TagEnd::HtmlBlock)))
+            .map(|i| i + 1)
+            .unwrap_or(events.len());
+    }
+
     let end_tag: TagEnd = tag.clone().into();
     let mut depth = 0usize;
     for (i, event) in events.iter().enumerate() {
@@ -160,17 +168,6 @@ fn block_extent_for_tag(events: &[Event<'static>], tag: &Tag<'_>) -> usize {
         }
     }
     events.len()
-}
-
-fn html_event_extent(events: &[Event<'static>]) -> usize {
-    let mut extent = 0usize;
-    for event in events {
-        match event {
-            Event::Html(_) | Event::InlineHtml(_) => extent += 1,
-            _ => break,
-        }
-    }
-    extent.max(1)
 }
 
 fn paragraph_extent(events: &[Event<'static>]) -> usize {
@@ -286,4 +283,5 @@ mod tests {
                 .any(|b| matches!(b.content, BlockContent::Html(_)))
         );
     }
+
 }
