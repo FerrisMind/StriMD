@@ -20,10 +20,20 @@ fn rewrite_line(line: &str) -> String {
             i += len;
             continue;
         }
-        if let Some((len, replacement)) = try_bare_email_autolink(line, i) {
-            out.push_str(&replacement);
-            i += len;
-            continue;
+        if let Some(scan) = scan_bare_email_candidate(line, i) {
+            match scan {
+                EmailScan::Rewritten { consumed, replacement } => {
+                    out.push_str(&replacement);
+                    i += consumed;
+                    continue;
+                }
+                EmailScan::Original { consumed } if consumed > 0 => {
+                    out.push_str(&line[i..i + consumed]);
+                    i += consumed;
+                    continue;
+                }
+                EmailScan::Original { .. } => {}
+            }
         }
         let ch = line[i..].chars().next().expect("utf8");
         out.push(ch);
@@ -38,6 +48,11 @@ fn autolink_may_start(line: &str, start: usize) -> bool {
     }
     let prev = line.as_bytes()[start - 1];
     prev.is_ascii_whitespace() || matches!(prev, b'*' | b'_' | b'~' | b'(')
+}
+
+enum EmailScan {
+    Rewritten { consumed: usize, replacement: String },
+    Original { consumed: usize },
 }
 
 fn try_www_autolink(line: &str, start: usize) -> Option<(usize, String)> {
@@ -132,26 +147,46 @@ fn trim_trailing_punctuation(link: &str) -> &str {
     &link[..end]
 }
 
-fn try_bare_email_autolink(line: &str, start: usize) -> Option<(usize, String)> {
+fn scan_bare_email_candidate(line: &str, start: usize) -> Option<EmailScan> {
     if !autolink_may_start(line, start) {
         return None;
     }
     let rest = &line[start..];
-    let at = rest.find('@')?;
-    if at == 0 {
+    if !rest.chars().next().is_some_and(is_email_local_char) {
         return None;
     }
-    let local = &rest[..at];
-    if !local
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || ".!#$%&'*+/=?^_`{|}~-".contains(c))
-    {
-        return None;
+
+    let mut at = None;
+    for (offset, ch) in rest.char_indices() {
+        if ch == '@' {
+            at = Some(offset);
+            break;
+        }
+        if ch.is_whitespace() || ch == '<' {
+            return Some(EmailScan::Original { consumed: offset });
+        }
+        if !is_email_local_char(ch) {
+            return Some(EmailScan::Original { consumed: offset });
+        }
     }
+
+    let Some(at) = at else {
+        return Some(EmailScan::Original {
+            consumed: rest.len(),
+        });
+    };
+
     let domain_len = email_domain_end(&rest[at + 1..])?;
     let email = &rest[..at + 1 + domain_len];
     let replacement = format!("<mailto:{email}>");
-    Some((start + email.len(), replacement))
+    Some(EmailScan::Rewritten {
+        consumed: email.len(),
+        replacement,
+    })
+}
+
+fn is_email_local_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ".!#$%&'*+/=?^_`{|}~-".contains(ch)
 }
 
 fn email_domain_end(domain: &str) -> Option<usize> {
@@ -195,5 +230,17 @@ mod tests {
     fn www_in_sentence() {
         let out = apply_gfm_extended_autolinks("Visit www.commonmark.org/help for more.\n");
         assert!(out.contains("<http://www.commonmark.org/help>"));
+    }
+
+    #[test]
+    fn bare_email_becomes_mailto_autolink() {
+        let out = apply_gfm_extended_autolinks("mail me at user.name+tag@example.com\n");
+        assert!(out.contains("<mailto:user.name+tag@example.com>"));
+    }
+
+    #[test]
+    fn invalid_local_prefix_does_not_block_later_email_start() {
+        let out = apply_gfm_extended_autolinks("a(user@example.com)\n");
+        assert!(out.contains("a(<mailto:user@example.com>)"));
     }
 }

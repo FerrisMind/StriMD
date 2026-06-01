@@ -134,23 +134,12 @@ fn split_markdown_segments(
     let mut pos = 0;
 
     while pos < source.len() {
-        let fenced = find_fenced_code_block(source, pos);
-        let indented = find_indented_code_block(source, pos);
-
-        let next = match (fenced.as_ref(), indented.as_ref()) {
-            (Some(f), Some(i)) if i.start < f.open_line_start => {
-                NextCodeBlock::Indented(indented.unwrap())
+        let Some(next) = find_next_code_block(source, pos) else {
+            let tail = &source[pos..];
+            if !tail.trim().is_empty() {
+                segments.push(rich_segment(tail, preprocess_rich));
             }
-            (Some(_), Some(_)) => NextCodeBlock::Fenced(fenced.unwrap()),
-            (Some(f), None) => NextCodeBlock::Fenced(f.clone()),
-            (None, Some(i)) => NextCodeBlock::Indented(i.clone()),
-            (None, None) => {
-                let tail = &source[pos..];
-                if !tail.trim().is_empty() {
-                    segments.push(rich_segment(tail, preprocess_rich));
-                }
-                break;
-            }
+            break;
         };
 
         let block_start = match &next {
@@ -187,6 +176,48 @@ fn split_markdown_segments(
     segments
 }
 
+fn find_next_code_block(source: &str, from: usize) -> Option<NextCodeBlock> {
+    let mut line_start = next_line_start(source, from);
+
+    while line_start < source.len() {
+        let current_line_end = line_end(source, line_start);
+        let line = &source[line_start..current_line_end];
+        let trimmed = line.trim_start();
+
+        if line.len() - trimmed.len() <= 3
+            && let Some((fence_char, fence_len, language)) = parse_fence_open(trimmed)
+        {
+            let body_start = advance_past_line(source, current_line_end);
+            if let Some(body_end) = find_fence_close(source, body_start, fence_char, fence_len) {
+                let close_line_end = line_end(source, body_end);
+                let after_close = advance_past_line(source, close_line_end);
+
+                return Some(NextCodeBlock::Fenced(FencedCodeBlock {
+                    open_line_start: line_start,
+                    body_start,
+                    body_end,
+                    after_close,
+                    fence_char,
+                    fence_len,
+                    language,
+                }));
+            }
+        }
+
+        if is_indented_code_line(line) && is_indented_block_start(source, line_start) {
+            return Some(NextCodeBlock::Indented(collect_indented_code_block(
+                source,
+                line_start,
+                current_line_end,
+            )));
+        }
+
+        line_start = advance_past_line(source, current_line_end);
+    }
+
+    None
+}
+
 fn rich_segment(markdown: &str, preprocess_rich: &impl Fn(&str) -> String) -> MarkSegment {
     let processed = preprocess_rich(markdown);
     MarkSegment::Rich(MarkState::with_html_and_markdown(&processed))
@@ -206,52 +237,6 @@ fn code_segment(
         fence_char,
         open_fence_len,
     })
-}
-
-fn find_fenced_code_block(source: &str, from: usize) -> Option<FencedCodeBlock> {
-    let mut search_from = from;
-
-    while search_from < source.len() {
-        let line_start = search_from;
-        let line_end = source[line_start..]
-            .find('\n')
-            .map(|offset| line_start + offset)
-            .unwrap_or(source.len());
-        let line = &source[line_start..line_end];
-        let trimmed = line.trim_start();
-
-        if line.len() - trimmed.len() <= 3
-            && let Some((fence_char, fence_len, language)) = parse_fence_open(trimmed)
-        {
-            let body_start = line_end + usize::from(line_end < source.len());
-            if let Some(body_end) = find_fence_close(source, body_start, fence_char, fence_len)
-            {
-                let close_line_end = source[body_end..]
-                    .find('\n')
-                    .map(|offset| body_end + offset)
-                    .unwrap_or(source.len());
-                let after_close = close_line_end + usize::from(close_line_end < source.len());
-
-                return Some(FencedCodeBlock {
-                    open_line_start: line_start,
-                    body_start,
-                    body_end,
-                    after_close,
-                    fence_char,
-                    fence_len,
-                    language,
-                });
-            }
-        }
-
-        search_from = if line_end < source.len() {
-            line_end + 1
-        } else {
-            source.len()
-        };
-    }
-
-    None
 }
 
 fn parse_fence_open(line: &str) -> Option<(char, usize, Option<String>)> {
@@ -322,64 +307,32 @@ fn is_fence_close(line: &str, fence_char: char, fence_len: usize) -> bool {
     count >= fence_len && line[count..].trim().is_empty()
 }
 
-fn find_indented_code_block(source: &str, from: usize) -> Option<IndentedCodeBlock> {
-    let mut line_start = from;
-    if from > 0
-        && source
-            .as_bytes()
-            .get(from.saturating_sub(1))
-            .is_none_or(|b| *b != b'\n')
-    {
-        line_start = source[from..]
-            .find('\n')
-            .map(|offset| from + offset + 1)
-            .unwrap_or(source.len());
-    }
+fn collect_indented_code_block(
+    source: &str,
+    body_start: usize,
+    first_line_end: usize,
+) -> IndentedCodeBlock {
+    let mut body_end = first_line_end;
+    let mut scan = advance_past_line(source, first_line_end);
 
-    while line_start < source.len() {
-        let line_end = source[line_start..]
-            .find('\n')
-            .map(|offset| line_start + offset)
-            .unwrap_or(source.len());
-        let line = &source[line_start..line_end];
+    while scan < source.len() {
+        let next_line_end = line_end(source, scan);
+        let next_line = &source[scan..next_line_end];
 
-        if is_indented_code_line(line) && is_indented_block_start(source, line_start) {
-            let body_start = line_start;
-            let mut body_end = line_end;
-            let mut scan = line_end + usize::from(line_end < source.len());
-
-            while scan < source.len() {
-                let next_line_end = source[scan..]
-                    .find('\n')
-                    .map(|offset| scan + offset)
-                    .unwrap_or(source.len());
-                let next_line = &source[scan..next_line_end];
-
-                if next_line.trim().is_empty() || is_indented_code_line(next_line) {
-                    body_end = next_line_end;
-                    scan = next_line_end + usize::from(next_line_end < source.len());
-                    continue;
-                }
-                break;
-            }
-
-            let after_end = body_end + usize::from(body_end < source.len());
-            return Some(IndentedCodeBlock {
-                start: body_start,
-                body_start,
-                body_end,
-                after_end,
-            });
+        if next_line.trim().is_empty() || is_indented_code_line(next_line) {
+            body_end = next_line_end;
+            scan = advance_past_line(source, next_line_end);
+            continue;
         }
-
-        line_start = if line_end < source.len() {
-            line_end + 1
-        } else {
-            source.len()
-        };
+        break;
     }
 
-    None
+    IndentedCodeBlock {
+        start: body_start,
+        body_start,
+        body_end,
+        after_end: advance_past_line(source, body_end),
+    }
 }
 
 fn is_indented_code_line(line: &str) -> bool {
@@ -396,6 +349,32 @@ fn is_indented_block_start(source: &str, line_start: usize) -> bool {
     }
 
     source[..line_start].ends_with("\n\n")
+}
+
+fn next_line_start(source: &str, from: usize) -> usize {
+    if from == 0
+        || source
+            .as_bytes()
+            .get(from.saturating_sub(1))
+            .is_some_and(|b| *b == b'\n')
+    {
+        return from;
+    }
+    source[from..]
+        .find('\n')
+        .map(|offset| from + offset + 1)
+        .unwrap_or(source.len())
+}
+
+fn line_end(source: &str, start: usize) -> usize {
+    source[start..]
+        .find('\n')
+        .map(|offset| start + offset)
+        .unwrap_or(source.len())
+}
+
+fn advance_past_line(source: &str, end: usize) -> usize {
+    end + usize::from(end < source.len())
 }
 
 fn dedent_indented_code(body: &str) -> String {
