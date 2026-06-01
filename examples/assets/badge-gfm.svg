@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="92" height="20" role="img" aria-label="GFM spec">
+  <rect width="38" height="20" fill="#1f2937"/>
+  <rect x="38" width="54" height="20" fill="#2563eb"/>
+  <text x="19" y="14" fill="#ffffff" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="11" text-anchor="middle">GFM</text>
+  <text x="65" y="14" fill="#ffffff" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="11" text-anchor="middle">spec</text>
+</svg>

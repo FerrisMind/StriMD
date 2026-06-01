@@ -240,9 +240,36 @@ impl StreamDocument {
             html_block_content(source.clone(), self.raw_html, gfm_tagfilter)
         } else if let Some(events) = self.adapter.committed_events(block.id) {
             self.committed_content(source.clone(), events.to_vec(), kind, gfm_tagfilter)
+        } else if block.kind == mdstream::BlockKind::MathBlock {
+            #[cfg(feature = "math")]
+            {
+                let latex = crate::parse::content::strip_math_delimiters(&source);
+                BlockContent::Math {
+                    latex: Arc::from(latex),
+                    display: true,
+                }
+            }
+            #[cfg(not(feature = "math"))]
+            {
+                BlockContent::PendingMarkdown
+            }
         } else if block.kind == mdstream::BlockKind::CodeFence {
+            let lang = block.code_fence_language().map(str::to_string);
+            #[cfg(feature = "mermaid")]
+            if lang.as_deref().is_some_and(crate::parse::content::is_mermaid_lang) {
+                BlockContent::Mermaid {
+                    source: Arc::from(code_text_from_stream_block(block)),
+                    complete: status == BlockStatus::Committed,
+                }
+            } else {
+                BlockContent::Code {
+                    lang,
+                    complete: status == BlockStatus::Committed,
+                }
+            }
+            #[cfg(not(feature = "mermaid"))]
             BlockContent::Code {
-                lang: block.code_fence_language().map(str::to_string),
+                lang,
                 complete: status == BlockStatus::Committed,
             }
         } else {
@@ -271,6 +298,10 @@ impl StreamDocument {
             BlockContent::Markdown(CompiledMarkdown::new(source, events))
         }
     }
+}
+
+fn code_text_from_stream_block(block: &mdstream::Block) -> String {
+    block.display_or_raw().trim_end_matches('\n').to_string()
 }
 
 fn mdstream_kind_to_strimd(kind: mdstream::BlockKind) -> BlockKind {

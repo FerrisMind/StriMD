@@ -32,6 +32,13 @@ html5ever = { version = "0.36", optional = true }
 markup5ever_rcdom = { version = "0.36", optional = true }
 lol_html = { version = "2", optional = true }
 mdstream = { path = "../mdstream/mdstream", optional = true }
+ratex-parser = { path = "../RaTeX/crates/ratex-parser", optional = true }
+ratex-layout = { path = "../RaTeX/crates/ratex-layout", optional = true }
+ratex-svg = { path = "../RaTeX/crates/ratex-svg", optional = true, features = [
+    "standalone",
+    "embed-fonts",
+] }
+mermaid-rs-renderer = { path = "../mermaid-rs-renderer", default-features = false, optional = true }
 
 [dev-dependencies]
 open = "5"
@@ -58,12 +65,21 @@ stream = ["dep:mdstream", "mdstream/pulldown"]
 static = ["dep:html5ever"]
 
 # Implementation-detail features (unsupported for downstream use)
+math = [
+    "dep:ratex-parser",
+    "dep:ratex-layout",
+    "dep:ratex-svg",
+]
+mermaid = ["dep:mermaid-rs-renderer"]
 _iced_backend = [
     "dep:iced",
     "dep:html5ever",
     "static",
     "iced/x11",
     "iced/wayland",
+    "iced/svg",
+    "math",
+    "mermaid",
 ]
 _html_preprocess = ["dep:lol_html"]
 _rcdom_compat = ["dep:markup5ever_rcdom"]
@@ -115,3 +131,7 @@ required-features = ["no_iced", "static", "stream"]
 [[example]]
 name = "llm_chat"
 required-features = ["_iced_backend", "stream", "iced/tokio"]
+
+[[example]]
+name = "math_mermaid"
+required-features = ["_iced_backend", "math", "mermaid"]

@@ -77,6 +77,22 @@ fn group_events_into_blocks(
         };
         let content = if let Some(html) = &coalesced_html {
             sanitize::block_content_from_raw_html(html, raw_html, gfm_tagfilter)
+        } else if kind == BlockKind::MathBlock {
+            #[cfg(feature = "math")]
+            {
+                if let Some(latex) = crate::parse::content::display_math_latex_from_events(slice) {
+                    BlockContent::Math {
+                        latex,
+                        display: true,
+                    }
+                } else {
+                    block_content_from_events(slice, block_source.clone(), raw_html, gfm_tagfilter)
+                }
+            }
+            #[cfg(not(feature = "math"))]
+            {
+                block_content_from_events(slice, block_source.clone(), raw_html, gfm_tagfilter)
+            }
         } else {
             block_content_from_events(slice, block_source.clone(), raw_html, gfm_tagfilter)
         };
@@ -217,6 +233,23 @@ mod tests {
         assert!(opts.pulldown.contains(Options::ENABLE_GFM));
         assert!(opts.pulldown.contains(Options::ENABLE_MATH));
         assert!(opts.pulldown.contains(Options::ENABLE_WIKILINKS));
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn display_math_paragraph_maps_to_math_content() {
+        let source = "Display:\n\n$$\\frac{1}{2}$$\n";
+        let blocks = parse_blocks(
+            source,
+            ParseProfile::GitHubPreview,
+            &ParseOptions::for_profile(ParseProfile::GitHubPreview),
+        )
+        .expect("parse");
+        assert!(
+            blocks
+                .iter()
+                .any(|b| matches!(b.content, BlockContent::Math { .. }))
+        );
     }
 
     #[test]

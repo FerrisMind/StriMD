@@ -27,6 +27,21 @@ pub fn blocks_to_html(blocks: &[RenderBlock]) -> Result<String, RenderError> {
                 ));
             }
             BlockContent::PendingMarkdown => {}
+            #[cfg(feature = "math")]
+            BlockContent::Math { latex, display } => {
+                let (open, close) = if *display { ("$$", "$$") } else { ("$", "$") };
+                out.push_str(&format!(
+                    "<span class=\"math math-display\">{open}{}{close}</span>",
+                    html_escape_text(latex)
+                ));
+            }
+            #[cfg(feature = "mermaid")]
+            BlockContent::Mermaid { source, .. } => {
+                out.push_str(&format!(
+                    "<pre><code class=\"language-mermaid\">{}</code></pre>",
+                    html_escape_text(source)
+                ));
+            }
             BlockContent::Unsupported { reason } => {
                 out.push_str(&format!(
                     "<!-- unsupported: {} -->",

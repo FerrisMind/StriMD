@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use pulldown_cmark::{CodeBlockKind, Event, Tag};
+use pulldown_cmark::{CodeBlockKind, Event, Tag, TagEnd};
 
 use crate::core::block::{BlockContent, CompiledMarkdown};
 use crate::html::sanitize;
@@ -23,6 +23,34 @@ pub(crate) fn code_text_from_events(slice: &[Event<'static>]) -> String {
         .join("")
 }
 
+/// True when the fenced code block language is Mermaid.
+#[cfg(feature = "mermaid")]
+pub(crate) fn is_mermaid_lang(lang: &str) -> bool {
+    lang.eq_ignore_ascii_case("mermaid")
+}
+
+/// LaTeX body from a display-math event slice.
+#[cfg(feature = "math")]
+pub(crate) fn display_math_latex_from_events(slice: &[Event<'static>]) -> Option<Arc<str>> {
+    match slice.first()? {
+        Event::DisplayMath(text) => Some(Arc::from(text.as_ref())),
+        _ => None,
+    }
+}
+
+/// Strip `$$` / `$` wrappers from a math block source string.
+#[cfg(feature = "math")]
+pub(crate) fn strip_math_delimiters(source: &str) -> String {
+    let trimmed = source.trim();
+    if trimmed.starts_with("$$") && trimmed.ends_with("$$") && trimmed.len() >= 4 {
+        return trimmed[2..trimmed.len() - 2].trim().to_string();
+    }
+    if trimmed.starts_with('$') && trimmed.ends_with('$') && trimmed.len() >= 2 {
+        return trimmed[1..trimmed.len() - 1].trim().to_string();
+    }
+    trimmed.to_string()
+}
+
 /// Language tag from a fenced code block, if present.
 pub(crate) fn code_lang_from_events(slice: &[Event<'static>]) -> Option<String> {
     let Event::Start(Tag::CodeBlock(kind)) = slice.first()? else {
@@ -34,6 +62,32 @@ pub(crate) fn code_lang_from_events(slice: &[Event<'static>]) -> Option<String> 
     }
 }
 
+/// Display-math body when a paragraph block is only `$$…$$` / [`Event::DisplayMath`].
+#[cfg(feature = "math")]
+pub(crate) fn display_math_from_paragraph_slice(slice: &[Event<'static>]) -> Option<Arc<str>> {
+    let inner: Vec<&Event<'_>> = slice
+        .iter()
+        .filter(|event| {
+            !matches!(
+                event,
+                Event::Start(Tag::Paragraph) | Event::End(TagEnd::Paragraph)
+            )
+        })
+        .collect();
+    match inner.as_slice() {
+        [Event::DisplayMath(text)] => Some(Arc::from(text.as_ref())),
+        [Event::Text(text)] => {
+            let stripped = strip_math_delimiters(text);
+            if stripped != text.as_ref() && !stripped.is_empty() {
+                Some(Arc::from(stripped))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Derive block content from pulldown events, routing raw HTML per [`RawHtmlPolicy`].
 pub fn block_content_from_events(
     slice: &[Event<'static>],
@@ -41,9 +95,27 @@ pub fn block_content_from_events(
     raw_html: RawHtmlPolicy,
     gfm_tagfilter: bool,
 ) -> BlockContent {
+    #[cfg(feature = "math")]
+    if matches!(slice.first(), Some(Event::Start(Tag::Paragraph))) {
+        if let Some(latex) = display_math_from_paragraph_slice(slice) {
+            return BlockContent::Math {
+                latex,
+                display: true,
+            };
+        }
+    }
+
     if is_code_fence_slice(slice) {
+        let lang = code_lang_from_events(slice);
+        #[cfg(feature = "mermaid")]
+        if lang.as_deref().is_some_and(is_mermaid_lang) {
+            return BlockContent::Mermaid {
+                source: Arc::from(code_text_from_events(slice)),
+                complete: true,
+            };
+        }
         return BlockContent::Code {
-            lang: code_lang_from_events(slice),
+            lang,
             complete: true,
         };
     }

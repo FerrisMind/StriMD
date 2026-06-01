@@ -82,7 +82,7 @@ fn try_www_autolink(line: &str, start: usize) -> Option<(usize, String)> {
     let suffix = &link_text[trimmed.len()..];
     let href = format!("http://{trimmed}");
     let replacement = format!("<{href}>{suffix}");
-    Some((start + full_end, replacement))
+    Some((full_end, replacement))
 }
 
 fn www_domain_end(rest: &str) -> Option<usize> {
@@ -103,6 +103,13 @@ fn www_domain_end(rest: &str) -> Option<usize> {
         if c == b'.' {
             if i == 4 || since_period == 0 {
                 return None;
+            }
+            let next = bytes.get(i + 1).copied();
+            if !matches!(
+                next,
+                Some(next) if next.is_ascii_alphanumeric() || next == b'_' || next == b'-'
+            ) {
+                break;
             }
             period_count += 1;
             since_period = 0;
@@ -238,6 +245,12 @@ mod tests {
     fn www_in_sentence() {
         let out = apply_gfm_extended_autolinks("Visit www.commonmark.org/help for more.\n");
         assert!(out.contains("<http://www.commonmark.org/help>"));
+    }
+
+    #[test]
+    fn trailing_punctuation_is_excluded_from_www_link() {
+        let out = apply_gfm_extended_autolinks("Trailing punctuation excluded: www.example.com.\n");
+        assert!(out.contains("<http://www.example.com>."));
     }
 
     #[test]

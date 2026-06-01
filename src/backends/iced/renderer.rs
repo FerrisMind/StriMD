@@ -2,7 +2,8 @@ use iced::widget::markdown::{self};
 use iced::{Element, Font, Length, Padding, Pixels, border, padding, widget};
 
 use crate::html::block_alignment::BlockAlignment;
-use crate::html::block_cache::CachedBlock;
+use crate::html::block_cache::{CachedBlock, CachedSvg};
+use crate::render::svg_util::{svg_dimensions_for_height, svg_dimensions_to_fit};
 
 use super::{
     dom::{self, DomRef},
@@ -29,6 +30,7 @@ pub trait ValidTheme:
     + widget::checkbox::Catalog
     + widget::markdown::Catalog
     + widget::container::Catalog
+    + widget::svg::Catalog
 {
 }
 impl<T> ValidTheme for T where
@@ -39,6 +41,7 @@ impl<T> ValidTheme for T where
         + widget::checkbox::Catalog
         + widget::markdown::Catalog
         + widget::container::Catalog
+        + widget::svg::Catalog
 {
 }
 
@@ -131,8 +134,16 @@ where
         }
 
         match name {
-            "summary" | "span" | "html" | "body" | "p" | "div" | "thead" | "tbody" | "tfoot"
-            | "picture" => self.render_children(node, data),
+            "span" => {
+                #[cfg(feature = "math")]
+                if let Some(display) = self.math_span_mode(node) {
+                    return self.draw_math_span(node, data, display);
+                }
+                self.render_children(node, data)
+            }
+            "summary" | "html" | "body" | "p" | "div" | "thead" | "tbody" | "tfoot" | "picture" => {
+                self.render_children(node, data)
+            }
 
             "center" => {
                 data.alignment = Some(ChildAlignment::Center);
@@ -187,7 +198,10 @@ where
             "input" => match node.get_attr("type").unwrap_or("text") {
                 "checkbox" => {
                     let checked = node.get_attr("checked").is_some();
-                    widget::checkbox(checked).into()
+                    widget::container(widget::checkbox(checked))
+                        .height(self.text_size * 1.2)
+                        .align_y(iced::alignment::Vertical::Center)
+                        .into()
                 }
                 _ => node
                     .get_attr("value")
@@ -289,6 +303,13 @@ where
         let content = self.render_children(node, data);
 
         if let Some(alert) = alert {
+            let icon_text = self
+                .fn_github_alert_icon
+                .as_ref()
+                .map(|f| f(alert.label()))
+                .unwrap_or_else(|| alert.icon().to_string());
+            let icon: widget::text::Span<'a, M, Font> =
+                widget::span(icon_text).size(self.text_size * 0.85);
             let label: widget::text::Span<'a, M, Font> = widget::span(alert.label())
                 .size(self.text_size * 0.85)
                 .color(alert.color())
@@ -303,27 +324,101 @@ where
             let accent: Element<'a, M, T> = widget::rich_text([accent]).into();
 
             widget::row![
-                widget::container(accent).padding(Padding::default().top(2)),
-                widget::column![widget::rich_text([label]), content.render()]
-                    .spacing(6.0)
+                widget::container(accent).padding(Padding::default().top(1)),
+                widget::column![
+                    widget::rich_text([icon, widget::span(" "), label]),
+                    content.render()
+                ]
+                    .spacing(4.0)
                     .width(Length::Fill)
             ]
-            .spacing(8.0)
+            .spacing(2.0)
             .width(Length::Fill)
             .into()
         } else {
-            let body = content.render();
-            widget::stack!(
-                widget::row![
-                    widget::space().width(10),
-                    widget::container(body).width(Length::Fill)
-                ]
-                .width(Length::Fill),
-                widget::rule::vertical(2)
-            )
-            .width(Length::Fill)
+            let quote_color = iced::Color::from_rgb8(0x6A, 0x73, 0x7D);
+            let body = self.simple_quote_body(node, content, quote_color);
+            let accent: widget::text::Span<'a, M, Font> = widget::span("▎")
+                .size(self.text_size * 2.0)
+                .color(quote_color);
+            let accent: Element<'a, M, T> = widget::rich_text([accent]).into();
+            widget::row![accent, widget::container(body).width(Length::Fill)]
+                .spacing(1.0)
+                .width(Length::Fill)
             .into()
         }
+    }
+
+    #[cfg(feature = "math")]
+    fn math_span_mode(&self, node: DomRef<'_>) -> Option<bool> {
+        let class = node.get_attr("class")?;
+        if class.contains("math-inline") {
+            Some(false)
+        } else if class.contains("math-display") {
+            Some(true)
+        } else {
+            None
+        }
+    }
+
+    #[cfg(feature = "math")]
+    fn draw_math_span(
+        &mut self,
+        node: DomRef<'_>,
+        data: ChildData,
+        display: bool,
+    ) -> RenderedSpan<'a, M, T> {
+        let latex = node.accumulated_text();
+        let latex = latex.trim();
+        if latex.is_empty() {
+            return RenderedSpan::None;
+        }
+        let Some(cache) = self.state.cache.as_ref() else {
+            return self.render_children(node, data);
+        };
+        let svg = if display {
+            cache.display_math_svg(latex)
+        } else {
+            cache.inline_math_svg(latex)
+        };
+        let Some(svg) = svg else {
+            return self.render_children(node, data);
+        };
+        let base = text_size_for_data(self.text_size, self.heading_scale, data.heading_weight);
+        let target_h = if display {
+            base * 2.2
+        } else {
+            // ~1.1× cap height — inline math slightly taller than body text (cf. KaTeX 1.21em).
+            base * 1.1
+        };
+        RenderedSpan::from(Self::element_from_cached_svg(&svg, Some(target_h))).with_gap(2.0)
+    }
+
+    fn element_from_cached_svg(svg: &CachedSvg, target_height: Option<f32>) -> Element<'a, M, T> {
+        let (w, h) = match target_height {
+            Some(target_h) => svg_dimensions_for_height(svg.width, svg.height, target_h),
+            None => (svg.width, svg.height),
+        };
+        Self::element_from_cached_svg_sized(svg, w, h)
+    }
+
+    fn element_from_cached_svg_fit(
+        svg: &CachedSvg,
+        max_width: f32,
+        max_height: f32,
+    ) -> Element<'a, M, T> {
+        let (w, h) = svg_dimensions_to_fit(svg.width, svg.height, max_width, max_height);
+        Self::element_from_cached_svg_sized(svg, w, h)
+    }
+
+    fn element_from_cached_svg_sized(svg: &CachedSvg, width: f32, height: f32) -> Element<'a, M, T> {
+        let mut widget = widget::svg(svg.handle.clone());
+        if width > 0.0 && height > 0.0 {
+            widget = widget
+                .width(Length::Fixed(width))
+                .height(Length::Fixed(height));
+        }
+        widget.into()
     }
 
     fn draw_kbd(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
@@ -395,6 +490,38 @@ where
             .align_y(vertical)
             .width(Length::Shrink)
             .into()
+    }
+
+    fn tint_rendered_span(
+        &self,
+        span: RenderedSpan<'a, M, T>,
+        color: iced::Color,
+    ) -> RenderedSpan<'a, M, T> {
+        match span {
+            RenderedSpan::Spans(spans) => {
+                RenderedSpan::Spans(spans.into_iter().map(|span| span.color(color)).collect())
+            }
+            other => other,
+        }
+    }
+
+    fn simple_quote_body(
+        &self,
+        node: DomRef<'_>,
+        content: RenderedSpan<'a, M, T>,
+        color: iced::Color,
+    ) -> Element<'a, M, T> {
+        if node
+            .children()
+            .into_iter()
+            .all(|child| child.is_useless() || matches!(child.tag_name(), Some("p" | "br")))
+        {
+            let text = clean_whitespace(&node.accumulated_text());
+            let span: widget::text::Span<'a, M, Font> = widget::span(text).color(color);
+            return widget::rich_text([span]).into();
+        }
+
+        self.tint_rendered_span(content, color).render()
     }
 
     fn get_summary_elements(
@@ -488,19 +615,22 @@ where
                         .collect(),
                 )
             } else if let Some(handler) = msg {
-                if let Some(style) = self.fn_style_link_button.clone() {
-                    let mut button = widget::button(children.render()).padding(0);
-                    if !url.is_empty() {
-                        button = button.on_press(handler(url.to_string()));
-                    }
-                    button = button.style(move |theme, status| style(theme, status));
-                    button.width(Length::Shrink).into()
-                } else {
-                    widget::mouse_area(children.render())
-                        .on_press(handler(url.to_string()))
-                        .interaction(iced::mouse::Interaction::Pointer)
-                        .into()
+                let mut button = widget::button(children.render()).padding(0);
+                if !url.is_empty() {
+                    button = button.on_press(handler(url.to_string()));
                 }
+                if let Some(style) = self.fn_style_link_button.clone() {
+                    button = button.style(move |theme, status| style(theme, status));
+                } else {
+                    button = button.style(|_theme, _status| widget::button::Style {
+                        background: None,
+                        text_color: iced::Color::TRANSPARENT,
+                        border: border::rounded(0.0),
+                        shadow: iced::Shadow::default(),
+                        snap: true,
+                    });
+                }
+                button.width(Length::Shrink).into()
             } else {
                 children.render().into()
             }
@@ -535,7 +665,7 @@ where
         let mut column = Vec::new();
         let mut row = RenderedSpan::None;
 
-        let meaningful: Vec<_> = children.into_iter().filter(|c| !c.is_useless()).collect();
+        let meaningful = self.significant_children(children);
         let mut skipped_summary = false;
         let original_start = data.li_ordered_number;
 
@@ -686,11 +816,13 @@ where
             let body = self.render_list_item_body_excluding_inputs(node, data);
             return widget::row![
                 widget::text("•").size(self.text_size),
-                widget::checkbox(checked),
+                widget::container(widget::checkbox(checked))
+                    .height(self.text_size * 1.2)
+                    .align_y(iced::alignment::Vertical::Center),
                 body.render(),
             ]
             .spacing(marker_gap)
-            .align_y(iced::Alignment::Start)
+            .align_y(iced::Alignment::Center)
             .into();
         }
 
@@ -718,10 +850,8 @@ where
         data: ChildData,
     ) -> RenderedSpan<'a, M, T> {
         let meaningful: Vec<_> = node
-            .children()
-            .into_iter()
-            .filter(|child| !child.is_useless())
-            .collect();
+            .children();
+        let meaningful = self.significant_children(meaningful);
 
         if meaningful.len() == 1 && meaningful[0].tag_name() == Some("p") {
             self.render_list_item_content(meaningful[0], data)
@@ -738,8 +868,8 @@ where
         let mut column = Vec::new();
         let mut row = RenderedSpan::None;
 
-        for child in node.children() {
-            if child.is_useless() || DomRef::is_task_checkbox(child) {
+        for child in self.significant_children(node.children()) {
+            if DomRef::is_task_checkbox(child) {
                 continue;
             }
             let element = if child.tag_name() == Some("p") {
@@ -852,16 +982,15 @@ where
         let text_color = style.and_then(|s| s.text_color);
 
         if inline {
-            const INLINE_CODE_TOP_PAD: f32 = 1.5;
-            const INLINE_CODE_BOTTOM_PAD: f32 = 0.5;
-            const INLINE_CODE_H_PAD: f32 = 3.0;
-
+            const INLINE_CODE_TOP_PAD: f32 = 1.0;
+            const INLINE_CODE_BOTTOM_PAD: f32 = 1.0;
+            const INLINE_CODE_H_PAD: f32 = 4.0;
             let mut code_span = widget::span(code)
                 .size(size)
                 .font(self.font_mono)
                 .line_height(Pixels(size + INLINE_CODE_TOP_PAD + INLINE_CODE_BOTTOM_PAD));
 
-            if let Some(color) = inline_color {
+            if let Some(color) = inline_color.or(text_color) {
                 code_span = code_span.color(color);
             }
             if let Some(background) = inline_background {
@@ -962,7 +1091,7 @@ where
         let mut column = Vec::new();
         let mut row = RenderedSpan::None;
 
-        for item in children {
+        for item in self.significant_children(children) {
             if item.is_useless() {
                 continue;
             }
@@ -1069,6 +1198,17 @@ where
                     self.render_fragment_roots(fragment, render_data)
                 }
                 Some(CachedBlock::Code(code)) => Self::render_fenced_code_block(self, code),
+                #[cfg(feature = "math")]
+                Some(CachedBlock::Math(svg)) => {
+                    let target_h = self.text_size * 2.4;
+                    RenderedSpan::from(Self::element_from_cached_svg(svg, Some(target_h)))
+                }
+                #[cfg(feature = "mermaid")]
+                Some(CachedBlock::Mermaid(svg)) => {
+                    let max_w = 560.0_f32;
+                    let max_h = self.text_size * 16.0;
+                    RenderedSpan::from(Self::element_from_cached_svg_fit(svg, max_w, max_h))
+                }
                 Some(CachedBlock::Empty) => RenderedSpan::None,
                 None => RenderedSpan::None,
             };
@@ -1211,6 +1351,36 @@ where
     }
 }
 
+impl<'a, M: Clone + 'static, T: widget::text::Catalog + 'a> MarkWidget<'a, M, T> {
+    fn significant_children<'b>(&self, children: Vec<DomRef<'b>>) -> Vec<DomRef<'b>> {
+        let snapshot = children.clone();
+        children
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, child)| {
+                let keep = !child.is_useless()
+                    || self.should_preserve_inline_whitespace(&snapshot, index);
+                keep.then_some(child)
+            })
+            .collect()
+    }
+
+    fn should_preserve_inline_whitespace(&self, children: &[DomRef<'_>], index: usize) -> bool {
+        let child = children[index];
+        if child.text_contents().is_none() || !child.is_useless() {
+            return false;
+        }
+
+        let prev = children[..index].iter().rfind(|node| !node.is_useless());
+        let next = children[index + 1..].iter().find(|node| !node.is_useless());
+
+        matches!(
+            (prev, next),
+            (Some(prev), Some(next)) if !prev.is_block_element() && !next.is_block_element()
+        )
+    }
+}
+
 impl<'a, M: Clone + 'static, T: ValidTheme + 'a> From<MarkWidget<'a, M, T>> for Element<'a, M, T>
 where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
@@ -1300,6 +1470,16 @@ impl GitHubAlertKind {
             Self::Caution => iced::Color::from_rgb8(0xCF, 0x22, 0x2E),
         }
     }
+
+    fn icon(self) -> &'static str {
+        match self {
+            Self::Note => "ℹ️",
+            Self::Tip => "💡",
+            Self::Important => "❗",
+            Self::Warning => "⚠️",
+            Self::Caution => "🚨",
+        }
+    }
 }
 
 fn github_alert_kind(class: Option<&str>) -> Option<GitHubAlertKind> {
@@ -1321,6 +1501,9 @@ enum ScriptKind {
 }
 
 fn clean_whitespace(input: &str) -> String {
+    if input.trim().is_empty() {
+        return " ".to_string();
+    }
     let mut s = input.split_whitespace().collect::<Vec<&str>>().join(" ");
     if let Some(last) = input.chars().next_back()
         && last != '\n'
@@ -1361,6 +1544,16 @@ mod render_tests {
             debug.contains("bold text"),
             "expected bold text in render output, got: {debug}"
         );
+    }
+
+    #[test]
+    fn inline_whitespace_between_tags_is_preserved() {
+        let fragment = HtmlFragment::from_html("<p><em>italic</em> <em>italic</em></p>");
+        let state = MarkState::from_blocks(&[]);
+        let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
+        let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
+        let debug = format!("{rendered:?}");
+        assert!(debug.contains("\" \""), "expected preserved space, got: {debug}");
     }
 
     #[test]
@@ -1486,6 +1679,30 @@ mod render_tests {
         assert!(
             matches!(rendered, RenderedSpan::Elem(_, _, _)),
             "expected keycap element, got {debug}"
+        );
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn inline_math_span_renders_as_svg_widget() {
+        use crate::{Document, ParseProfile};
+
+        let doc = Document::parse(
+            "Energy $E = mc^2$ here.",
+            ParseProfile::GitHubPreview,
+        )
+        .expect("parse");
+        let state = MarkState::from_document(&doc);
+        let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
+        let cache = state.cache.as_ref().expect("block cache");
+        let fragment = match cache.entry(0) {
+            Some(CachedBlock::Fragment(fragment)) => fragment.clone(),
+            _ => panic!("expected markdown fragment block at index 0"),
+        };
+        let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
+        assert!(
+            matches!(rendered, RenderedSpan::Elem(_, _, gap) if gap > 0.0),
+            "expected inline math as SVG element, got: {rendered:?}"
         );
     }
 

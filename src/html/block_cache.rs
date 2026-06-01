@@ -1,5 +1,6 @@
 //! Compile-once cache mapping [`RenderBlock`] values to [`HtmlFragment`] trees for rendering.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -16,6 +17,12 @@ use crate::html::block_alignment::{
 };
 use crate::html::fragment::HtmlFragment;
 use crate::profile::ParseProfile;
+#[cfg(feature = "math")]
+use crate::render::LatexCache;
+#[cfg(feature = "mermaid")]
+use crate::render::MermaidCache;
+#[cfg(any(feature = "math", feature = "mermaid"))]
+use crate::render::SvgArtifact;
 
 /// Fenced code payload for backends that render code blocks outside the DOM.
 #[derive(Debug, Clone)]
@@ -27,10 +34,22 @@ pub(crate) struct CachedCodeBlock {
     pub(crate) markdown_items: Rc<Vec<iced::widget::markdown::Item>>,
 }
 
+/// Rasterizable SVG payload for math and Mermaid blocks.
+#[derive(Debug, Clone)]
+pub(crate) struct CachedSvg {
+    pub(crate) handle: iced::widget::svg::Handle,
+    pub(crate) width: f32,
+    pub(crate) height: f32,
+}
+
 /// One compiled block ready for DOM traversal.
 pub(crate) enum CachedBlock {
     Fragment(HtmlFragment),
     Code(CachedCodeBlock),
+    #[cfg(feature = "math")]
+    Math(CachedSvg),
+    #[cfg(feature = "mermaid")]
+    Mermaid(CachedSvg),
     Empty,
 }
 
@@ -43,6 +62,10 @@ pub(crate) struct BlockRenderCache {
     statuses: Vec<BlockStatus>,
     indices: HashMap<BlockId, usize>,
     alignment_context: Option<BlockAlignment>,
+    #[cfg(feature = "math")]
+    latex_cache: RefCell<LatexCache>,
+    #[cfg(feature = "mermaid")]
+    mermaid_cache: RefCell<MermaidCache>,
     #[cfg(test)]
     compile_count: usize,
 }
@@ -57,6 +80,10 @@ impl Default for BlockRenderCache {
             statuses: Vec::new(),
             indices: HashMap::new(),
             alignment_context: None,
+            #[cfg(feature = "math")]
+            latex_cache: RefCell::new(LatexCache::new()),
+            #[cfg(feature = "mermaid")]
+            mermaid_cache: RefCell::new(MermaidCache::new()),
             #[cfg(test)]
             compile_count: 0,
         }
@@ -203,10 +230,56 @@ impl BlockRenderCache {
                     markdown_items,
                 })
             }
+            #[cfg(feature = "math")]
+            BlockContent::Math { latex, display } => {
+                self.compile_math_block(latex.as_ref(), *display)
+            }
+            #[cfg(feature = "mermaid")]
+            BlockContent::Mermaid { source, complete } => {
+                self.compile_mermaid_block(source.as_ref(), *complete)
+            }
             BlockContent::PendingMarkdown => {
                 CachedBlock::Fragment(pending_markdown_to_fragment(&block.source, self.profile))
             }
             BlockContent::Unsupported { .. } => CachedBlock::Empty,
+        }
+    }
+
+    #[cfg(feature = "math")]
+    pub(crate) fn inline_math_svg(&self, latex: &str) -> Option<CachedSvg> {
+        self.render_math_svg(latex, false)
+    }
+
+    #[cfg(feature = "math")]
+    pub(crate) fn display_math_svg(&self, latex: &str) -> Option<CachedSvg> {
+        self.render_math_svg(latex, true)
+    }
+
+    #[cfg(feature = "math")]
+    fn render_math_svg(&self, latex: &str, display: bool) -> Option<CachedSvg> {
+        self.latex_cache
+            .borrow_mut()
+            .render(latex, display)
+            .ok()
+            .map(|artifact| cached_svg_from_artifact(artifact.as_ref()))
+    }
+
+    #[cfg(feature = "math")]
+    fn compile_math_block(&mut self, latex: &str, display: bool) -> CachedBlock {
+        match self.latex_cache.borrow_mut().render(latex, display) {
+            Ok(artifact) => CachedBlock::Math(cached_svg_from_artifact(&artifact)),
+            Err(err) => CachedBlock::Fragment(math_fallback_fragment(latex, &err.to_string())),
+        }
+    }
+
+    #[cfg(feature = "mermaid")]
+    fn compile_mermaid_block(&mut self, source: &str, complete: bool) -> CachedBlock {
+        if !complete {
+            return CachedBlock::Fragment(mermaid_pending_fragment(source));
+        }
+        match self.mermaid_cache.borrow_mut().render(source) {
+            Ok(artifact) => CachedBlock::Mermaid(cached_svg_from_artifact(&artifact)),
+            Err(err) => CachedBlock::Fragment(mermaid_fallback_fragment(source, &err.to_string())),
         }
     }
 
@@ -339,6 +412,41 @@ fn escape_html_text(input: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(any(feature = "math", feature = "mermaid"))]
+pub(crate) fn cached_svg_from_artifact(artifact: &SvgArtifact) -> CachedSvg {
+    CachedSvg {
+        handle: iced::widget::svg::Handle::from_memory(artifact.bytes.clone()),
+        width: artifact.width,
+        height: artifact.height,
+    }
+}
+
+#[cfg(feature = "math")]
+fn math_fallback_fragment(latex: &str, error: &str) -> HtmlFragment {
+    HtmlFragment::from_html(&format!(
+        "<pre class=\"math-fallback\" title=\"{}\">{}</pre>",
+        escape_html_text(error),
+        escape_html_text(latex)
+    ))
+}
+
+#[cfg(feature = "mermaid")]
+fn mermaid_pending_fragment(source: &str) -> HtmlFragment {
+    HtmlFragment::from_html(&format!(
+        "<pre class=\"mermaid-pending\"><code>{}</code></pre>",
+        escape_html_text(source)
+    ))
+}
+
+#[cfg(feature = "mermaid")]
+fn mermaid_fallback_fragment(source: &str, error: &str) -> HtmlFragment {
+    HtmlFragment::from_html(&format!(
+        "<pre class=\"mermaid-fallback\" title=\"{}\"><code>{}</code></pre>",
+        escape_html_text(error),
+        escape_html_text(source)
+    ))
 }
 
 #[cfg(test)]

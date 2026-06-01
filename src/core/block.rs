@@ -36,6 +36,16 @@ pub enum BlockContent {
         complete: bool,
     },
     Html(HtmlFragment),
+    #[cfg(feature = "math")]
+    Math {
+        latex: Arc<str>,
+        display: bool,
+    },
+    #[cfg(feature = "mermaid")]
+    Mermaid {
+        source: Arc<str>,
+        complete: bool,
+    },
     Unsupported {
         reason: crate::core::error::UnsupportedReason,
     },

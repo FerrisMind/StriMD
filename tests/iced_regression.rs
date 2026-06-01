@@ -23,6 +23,20 @@ fn document_with_table_and_code_produces_blocks() {
     let _state = MarkState::from_document(&doc);
 }
 
+#[cfg(all(feature = "math", feature = "mermaid"))]
+#[test]
+fn mark_state_from_math_mermaid_fixtures() {
+    let source = concat!(
+        include_str!("fixtures/math_inline.md"),
+        "\n\n",
+        include_str!("fixtures/math_display.md"),
+        "\n\n",
+        include_str!("fixtures/mermaid_flow.md"),
+    );
+    let doc = Document::parse(source, ParseProfile::GitHubPreview).expect("parse");
+    let _state = MarkState::from_document(&doc);
+}
+
 #[cfg(feature = "stream")]
 #[test]
 fn streamed_gfm_table_syncs_to_mark_state() {

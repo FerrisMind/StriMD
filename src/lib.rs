@@ -38,6 +38,9 @@ pub mod options;
 pub mod parse;
 pub mod profile;
 
+#[cfg(any(feature = "math", feature = "mermaid"))]
+pub mod render;
+
 #[cfg(all(feature = "_iced_backend", not(feature = "no_iced")))]
 pub mod backends;
 

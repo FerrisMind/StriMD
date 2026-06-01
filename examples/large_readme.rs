@@ -143,6 +143,10 @@ impl App {
     }
 
     fn draw_image(&self, info: strimd::ImageInfo) -> Element<'static, Message> {
+        if badge_label(&info).is_some() {
+            return self.draw_badge(info);
+        }
+
         if let Some(image) = self.images_normal.get(info.url).cloned() {
             let mut width = info.width;
             let mut height = info.height;
@@ -190,6 +194,55 @@ impl App {
         } else {
             widget::text(missing_image_fallback(info)).into()
         }
+    }
+
+    fn draw_badge(&self, info: strimd::ImageInfo) -> Element<'static, Message> {
+        let label = badge_label(&info).unwrap_or("badge");
+        let (left, right) = badge_colors(info.url);
+        let left_text = if label.eq_ignore_ascii_case("gfm badge") {
+            "GFM"
+        } else {
+            "Docs"
+        };
+        let right_text = if label.eq_ignore_ascii_case("gfm badge") {
+            "spec"
+        } else {
+            "guide"
+        };
+
+        let left_chip = widget::container(widget::text(left_text).size(11).color(iced::Color::WHITE))
+            .padding([2, 6])
+            .style(move |_| widget::container::Style {
+                background: Some(left.into()),
+                text_color: Some(iced::Color::WHITE),
+                border: iced::Border {
+                    radius: iced::border::top_left(4.0)
+                        .bottom_left(4.0)
+                        .top_right(0.0)
+                        .bottom_right(0.0),
+                    width: 0.0,
+                    color: iced::Color::TRANSPARENT,
+                },
+                ..widget::container::Style::default()
+            });
+        let right_chip =
+            widget::container(widget::text(right_text).size(11).color(iced::Color::WHITE))
+                .padding([2, 6])
+                .style(move |_| widget::container::Style {
+                    background: Some(right.into()),
+                    text_color: Some(iced::Color::WHITE),
+                    border: iced::Border {
+                        radius: iced::border::top_left(0.0)
+                            .bottom_left(0.0)
+                            .top_right(4.0)
+                            .bottom_right(4.0),
+                        width: 0.0,
+                        color: iced::Color::TRANSPARENT,
+                    },
+                    ..widget::container::Style::default()
+                });
+
+        widget::row![left_chip, right_chip].spacing(0).into()
     }
 
     fn download_images(&mut self) -> Task<Message> {
@@ -294,6 +347,42 @@ fn missing_image_fallback(info: strimd::ImageInfo<'_>) -> String {
         .filter(|alt| !alt.trim().is_empty())
         .unwrap_or(info.url);
     format!("[image unavailable: {label}]")
+}
+
+fn badge_label<'a>(info: &'a strimd::ImageInfo<'a>) -> Option<&'a str> {
+    let lower = info.url.to_ascii_lowercase();
+    let looks_like_badge = lower.contains("badge")
+        || lower.contains("img.shields.io")
+        || lower.contains("shields.io/");
+    if !looks_like_badge {
+        return None;
+    }
+
+    info.alt
+        .filter(|label| !label.trim().is_empty())
+        .or_else(|| {
+            if lower.contains("badge-gfm") {
+                Some("GFM badge")
+            } else if lower.contains("badge-docs") {
+                Some("Docs badge")
+            } else {
+                None
+            }
+        })
+}
+
+fn badge_colors(url: &str) -> (iced::Color, iced::Color) {
+    if url.contains("badge-gfm") {
+        (
+            iced::Color::from_rgb8(0x1F, 0x29, 0x37),
+            iced::Color::from_rgb8(0x25, 0x63, 0xEB),
+        )
+    } else {
+        (
+            iced::Color::from_rgb8(0x33, 0x41, 0x55),
+            iced::Color::from_rgb8(0x16, 0xA3, 0x4A),
+        )
+    }
 }
 
 fn open_link(url: &str) -> Result<(), String> {

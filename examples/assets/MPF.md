@@ -540,10 +540,10 @@ Ruby: <ruby>東<rt>とう</rt>京<rt>きょう</rt></ruby>
 Linked badge images (common in README headers):
 
 <a href="https://github.github.io/gfm/">
-  <img src="crates/nova-app/assets/icons/icon.svg" height="20" alt="GFM badge">
+  <img src="examples/assets/badge-gfm.svg" height="20" alt="GFM badge">
 </a>
 <a href="https://docs.github.com/">
-  <img src="crates/nova-app/assets/icons/icon.svg" height="20" alt="Docs badge">
+  <img src="examples/assets/badge-docs.svg" height="20" alt="Docs badge">
 </a>
 
 ## HTML tables (layout + data)

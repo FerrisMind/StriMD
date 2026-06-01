@@ -89,6 +89,7 @@ type FDrawPreBlock<'a, M, T> = Box<dyn Fn(Element<'a, M, T>) -> Element<'a, M, T
 pub(crate) type FUpdate<M> = Arc<dyn Fn(UpdateMsg) -> M>;
 pub(crate) type FStyleLinkButton<T> =
     Arc<dyn Fn(&T, widget::button::Status) -> widget::button::Style + 'static>;
+pub(crate) type FGitHubAlertIcon = Arc<dyn Fn(&str) -> String + 'static>;
 
 /// The widget to be constructed every frame.
 ///
@@ -123,6 +124,7 @@ pub struct MarkWidget<'a, Message, Theme = iced::Theme> {
     pub(crate) fn_drawing_pre_block: Option<FDrawPreBlock<'a, Message, Theme>>,
     pub(crate) fn_update: Option<FUpdate<Message>>,
     pub(crate) fn_style_link_button: Option<FStyleLinkButton<Theme>>,
+    pub(crate) fn_github_alert_icon: Option<FGitHubAlertIcon>,
 
     pub(crate) paragraph_spacing: Option<f32>,
 
@@ -146,6 +148,7 @@ impl<'a, M: 'a, T: 'a> MarkWidget<'a, M, T> {
             fn_drawing_pre_block: None,
             fn_update: None,
             fn_style_link_button: None,
+            fn_github_alert_icon: None,
             style: None,
             current_dropdown_id: 0,
             text_size: 16.0,
@@ -346,6 +349,15 @@ impl<'a, M: 'a, T: 'a> MarkWidget<'a, M, T> {
         f: impl Fn(&T, widget::button::Status) -> widget::button::Style + 'static,
     ) -> Self {
         self.fn_style_link_button = Some(Arc::new(f));
+        self
+    }
+
+    /// Overrides the icon shown before GitHub alert titles (`[!NOTE]`, `[!WARNING]`, ...).
+    ///
+    /// The closure receives the alert label (`"Note"`, `"Tip"`, ...).
+    #[must_use]
+    pub fn github_alert_icon(mut self, f: impl Fn(&str) -> String + 'static) -> Self {
+        self.fn_github_alert_icon = Some(Arc::new(f));
         self
     }
 
