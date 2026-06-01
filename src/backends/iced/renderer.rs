@@ -49,6 +49,18 @@ impl<'a, M: Clone + 'static, T: ValidTheme + 'a> MarkWidget<'a, M, T>
 where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
 {
+    fn with_block_context<R>(
+        &mut self,
+        block_id: Option<crate::core::ids::BlockId>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let previous = self.current_block_id;
+        self.current_block_id = block_id;
+        let result = f(self);
+        self.current_block_id = previous;
+        result
+    }
+
     pub(crate) fn traverse_dom(
         &mut self,
         node: DomRef<'_>,
@@ -238,7 +250,14 @@ where
     }
 
     fn draw_details(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
-        let dropdown_id = self.current_dropdown_id;
+        let dropdown_id = self
+            .current_block_id
+            .and_then(|block_id| self.state.dropdown_id_for(block_id, node.id()))
+            .unwrap_or_else(|| {
+                let id = self.current_dropdown_id;
+                self.current_dropdown_id += 1;
+                id
+            });
         let e = if let (Some(update), Some(state)) = (
             self.fn_update.clone(),
             self.state.dropdown_state.get(&dropdown_id).copied(),
@@ -263,7 +282,6 @@ where
                 .interaction(iced::mouse::Interaction::Pointer)
                 .into();
 
-            self.current_dropdown_id += 1;
             let mut column = widget::column![link].spacing(5.0);
             if state {
                 let regular_children =
@@ -289,12 +307,6 @@ where
             .spacing(10)
             .into()
         };
-        if !matches!(
-            self.fn_update,
-            Some(_) if self.state.dropdown_state.contains_key(&dropdown_id)
-        ) {
-            self.current_dropdown_id += 1;
-        }
         e
     }
 
@@ -512,8 +524,7 @@ where
         color: iced::Color,
     ) -> Element<'a, M, T> {
         if node
-            .children()
-            .into_iter()
+            .children_iter()
             .all(|child| child.is_useless() || matches!(child.tag_name(), Some("p" | "br")))
         {
             let text = clean_whitespace(&node.accumulated_text());
@@ -529,8 +540,7 @@ where
         node: DomRef<'_>,
         data: ChildData,
     ) -> RenderedSpan<'a, M, T> {
-        node.children()
-            .into_iter()
+        node.children_iter()
             .find(|child| child.tag_name() == Some("summary"))
             .map(|child| self.traverse_dom(child, data))
             .unwrap_or_default()
@@ -597,7 +607,7 @@ where
         let children = self.render_children(node, data);
 
         if let Some(url) = node.get_attr("href") {
-            let children_empty = node.children().is_empty();
+            let children_empty = node.child_ids().is_empty();
             let msg = self.fn_clicking_link.as_ref();
 
             if children_empty {
@@ -665,7 +675,7 @@ where
         let mut column = Vec::new();
         let mut row = RenderedSpan::None;
 
-        let meaningful = self.significant_children(children);
+        let meaningful = self.significant_children(&children);
         let mut skipped_summary = false;
         let original_start = data.li_ordered_number;
 
@@ -849,9 +859,8 @@ where
         node: DomRef<'_>,
         data: ChildData,
     ) -> RenderedSpan<'a, M, T> {
-        let meaningful: Vec<_> = node
-            .children();
-        let meaningful = self.significant_children(meaningful);
+        let children = node.children();
+        let meaningful = self.significant_children(&children);
 
         if meaningful.len() == 1 && meaningful[0].tag_name() == Some("p") {
             self.render_list_item_content(meaningful[0], data)
@@ -867,8 +876,9 @@ where
     ) -> RenderedSpan<'a, M, T> {
         let mut column = Vec::new();
         let mut row = RenderedSpan::None;
+        let children = node.children();
 
-        for child in self.significant_children(node.children()) {
+        for child in self.significant_children(&children) {
             if DomRef::is_task_checkbox(child) {
                 continue;
             }
@@ -915,7 +925,7 @@ where
     fn render_shield_badge(&mut self, paragraph: DomRef<'_>, data: ChildData) -> Element<'a, M, T> {
         let mut row = widget::Row::new().spacing(6.0);
         let mut has_badge = false;
-        for child in paragraph.children() {
+        for child in paragraph.children_iter() {
             if child.is_useless() {
                 continue;
             }
@@ -935,10 +945,7 @@ where
     }
 
     fn render_pre_block(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
-        if let Some(code_node) = node
-            .children()
-            .into_iter()
-            .find(|child| child.tag_name() == Some("code"))
+        if let Some(code_node) = node.children_iter().find(|child| child.tag_name() == Some("code"))
         {
             let text = code_node.accumulated_text();
             if !text.trim().is_empty() {
@@ -1091,7 +1098,7 @@ where
         let mut column = Vec::new();
         let mut row = RenderedSpan::None;
 
-        for item in self.significant_children(children) {
+        for item in self.significant_children(&children) {
             if item.is_useless() {
                 continue;
             }
@@ -1143,6 +1150,7 @@ where
         let mut column = widget::Column::new().spacing(spacing).width(Length::Fill);
         let mut index = 0;
         while index < cache.len() {
+            let block_id = cache.block_id(index);
             let block_data = child_data_for_block_alignment(cache.entry_alignment(index));
             if let Some(CachedBlock::Fragment(fragment)) = cache.entry(index)
                 && Self::fragment_is_shield_paragraph(fragment)
@@ -1157,19 +1165,28 @@ where
                         Some(CachedBlock::Fragment(f)) if Self::fragment_is_shield_paragraph(f) => {
                             let roots = DomRef::fragment_roots(f);
                             if roots.len() == 1 {
-                                row = row.push(self.render_shield_badge(
-                                    roots[0],
-                                    child_data_for_block_alignment(cache.entry_alignment(index)),
+                                row = row.push(self.with_block_context(
+                                    cache.block_id(index),
+                                    |this| {
+                                        this.render_shield_badge(
+                                            roots[0],
+                                            child_data_for_block_alignment(
+                                                cache.entry_alignment(index),
+                                            ),
+                                        )
+                                    },
                                 ));
                             } else {
                                 row = row.push(
-                                    self.render_fragment_roots(
-                                        f,
-                                        child_data_for_block_alignment(
-                                            cache.entry_alignment(index),
-                                        ),
-                                    )
-                                    .render(),
+                                    self.with_block_context(cache.block_id(index), |this| {
+                                        this.render_fragment_roots(
+                                            f,
+                                            child_data_for_block_alignment(
+                                                cache.entry_alignment(index),
+                                            ),
+                                        )
+                                        .render()
+                                    }),
                                 );
                             }
                             index += 1;
@@ -1195,7 +1212,9 @@ where
                     } else {
                         ChildData::default()
                     };
-                    self.render_fragment_roots(fragment, render_data)
+                    self.with_block_context(block_id, |this| {
+                        this.render_fragment_roots(fragment, render_data)
+                    })
                 }
                 Some(CachedBlock::Code(code)) => Self::render_fenced_code_block(self, code),
                 #[cfg(feature = "math")]
@@ -1352,32 +1371,45 @@ where
 }
 
 impl<'a, M: Clone + 'static, T: widget::text::Catalog + 'a> MarkWidget<'a, M, T> {
-    fn significant_children<'b>(&self, children: Vec<DomRef<'b>>) -> Vec<DomRef<'b>> {
-        let snapshot = children.clone();
-        children
-            .into_iter()
-            .enumerate()
-            .filter_map(|(index, child)| {
-                let keep = !child.is_useless()
-                    || self.should_preserve_inline_whitespace(&snapshot, index);
-                keep.then_some(child)
-            })
-            .collect()
-    }
+    fn significant_children<'b>(&self, children: &[DomRef<'b>]) -> Vec<DomRef<'b>> {
+        let mut previous = vec![None; children.len()];
+        let mut next = vec![None; children.len()];
 
-    fn should_preserve_inline_whitespace(&self, children: &[DomRef<'_>], index: usize) -> bool {
-        let child = children[index];
-        if child.text_contents().is_none() || !child.is_useless() {
-            return false;
+        let mut last_meaningful = None;
+        for (index, child) in children.iter().copied().enumerate() {
+            previous[index] = last_meaningful;
+            if !child.is_useless() {
+                last_meaningful = Some(index);
+            }
         }
 
-        let prev = children[..index].iter().rfind(|node| !node.is_useless());
-        let next = children[index + 1..].iter().find(|node| !node.is_useless());
+        let mut next_meaningful = None;
+        for (index, child) in children.iter().copied().enumerate().rev() {
+            next[index] = next_meaningful;
+            if !child.is_useless() {
+                next_meaningful = Some(index);
+            }
+        }
 
-        matches!(
-            (prev, next),
-            (Some(prev), Some(next)) if !prev.is_block_element() && !next.is_block_element()
-        )
+        children
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(index, child)| {
+                if !child.is_useless() {
+                    return Some(child);
+                }
+                let preserve = matches!(
+                    (
+                        previous[index].map(|i| children[i]),
+                        next[index].map(|i| children[i])
+                    ),
+                    (Some(prev), Some(next))
+                        if !prev.is_block_element() && !next.is_block_element()
+                );
+                preserve.then_some(child)
+            })
+            .collect()
     }
 }
 

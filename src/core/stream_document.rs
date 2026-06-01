@@ -300,6 +300,7 @@ impl StreamDocument {
     }
 }
 
+#[cfg(feature = "mermaid")]
 fn code_text_from_stream_block(block: &mdstream::Block) -> String {
     block.display_or_raw().trim_end_matches('\n').to_string()
 }

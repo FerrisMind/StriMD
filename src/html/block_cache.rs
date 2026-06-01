@@ -115,6 +115,16 @@ impl BlockRenderCache {
         self.entries.len()
     }
 
+    #[must_use]
+    pub fn block_id(&self, index: usize) -> Option<BlockId> {
+        self.ids.get(index).copied()
+    }
+
+    #[must_use]
+    pub fn index_of(&self, id: BlockId) -> Option<usize> {
+        self.indices.get(&id).copied()
+    }
+
     /// Block lifecycle (committed vs pending); used by stream sync and tests.
     #[allow(dead_code)]
     #[must_use]
@@ -382,6 +392,9 @@ fn markdown_to_fragment(compiled: &CompiledMarkdown, profile: ParseProfile) -> H
 }
 
 fn pending_markdown_to_fragment(source: &str, profile: ParseProfile) -> HtmlFragment {
+    if let Some(fragment) = pending_plain_text_fragment(source) {
+        return fragment;
+    }
     let prepared = if profile.uses_gfm_extensions() {
         crate::parse::gfm_preprocess::apply_gfm_extended_autolinks(source)
     } else {
@@ -398,6 +411,45 @@ fn pending_markdown_to_fragment(source: &str, profile: ParseProfile) -> HtmlFrag
     } else {
         HtmlFragment::from_html(&html_buf)
     }
+}
+
+fn pending_plain_text_fragment(source: &str) -> Option<HtmlFragment> {
+    if source.is_empty() || pending_markdown_requires_full_parse(source) {
+        return None;
+    }
+    Some(HtmlFragment::from_html(&format!(
+        "<p>{}</p>",
+        escape_html_text(source)
+    )))
+}
+
+fn pending_markdown_requires_full_parse(source: &str) -> bool {
+    if source.contains("\n\n")
+        || source.contains('\r')
+        || source.contains(['<', '>', '`', '*', '_', '[', ']', '!', '|', '~'])
+    {
+        return true;
+    }
+
+    source.lines().any(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with('#')
+            || trimmed.starts_with('>')
+            || trimmed.starts_with("- ")
+            || trimmed.starts_with("* ")
+            || trimmed.starts_with("+ ")
+            || starts_ordered_list_marker(trimmed)
+    })
+}
+
+fn starts_ordered_list_marker(line: &str) -> bool {
+    let digits = line.bytes().take_while(u8::is_ascii_digit).count();
+    if digits == 0 || digits + 2 > line.len() {
+        return false;
+    }
+
+    matches!(line.as_bytes().get(digits), Some(b'.' | b')'))
+        && matches!(line.as_bytes().get(digits + 1), Some(b' '))
 }
 
 fn escape_html_text(input: &str) -> String {
@@ -565,6 +617,46 @@ mod tests {
         if let Some(pending) = stream.pending() {
             assert_eq!(cache.status(cache.len() - 1), Some(BlockStatus::Pending));
             assert_eq!(cache.status(cache.len() - 1), Some(pending.status));
+        }
+    }
+
+    #[cfg(feature = "stream")]
+    #[test]
+    fn plain_text_pending_uses_fragment_fast_path() {
+        use crate::core::{StreamDocument, StreamOptions};
+
+        let mut stream = StreamDocument::new(StreamOptions::chat());
+        stream.append("Hello streamed text");
+        let mut cache = BlockRenderCache::default();
+        cache.sync_from_stream(&stream);
+
+        match cache.entry(cache.len() - 1) {
+            Some(CachedBlock::Fragment(fragment)) => {
+                assert_eq!(fragment.roots().len(), 1);
+                assert!(matches!(
+                    fragment.node(fragment.roots()[0]),
+                    Some(HtmlNode::Element { tag, .. }) if tag.as_str() == "p"
+                ));
+            }
+            _ => panic!("expected pending text fragment"),
+        }
+    }
+
+    #[cfg(feature = "stream")]
+    #[test]
+    fn markdown_pending_still_uses_full_parse() {
+        use crate::core::{StreamDocument, StreamOptions};
+
+        let mut stream = StreamDocument::new(StreamOptions::chat());
+        stream.append("Hello **markdown**");
+        let mut cache = BlockRenderCache::default();
+        cache.sync_from_stream(&stream);
+
+        match cache.entry(cache.len() - 1) {
+            Some(CachedBlock::Fragment(fragment)) => {
+                assert!(fragment_contains_tag(fragment, fragment.roots()[0], "strong"));
+            }
+            _ => panic!("expected parsed markdown fragment"),
         }
     }
 

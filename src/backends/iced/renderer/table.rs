@@ -20,19 +20,18 @@ where
         let mut column_alignments: Vec<Option<ChildAlignment>> = Vec::new();
         let mut body_rows: Vec<Vec<RenderedSpan<'a, M, T>>> = Vec::new();
 
-        for section in node.children() {
+        for section in node.children_iter() {
             let Some(section_name) = section.tag_name() else {
                 continue;
             };
 
-            for row in section.children() {
+            for row in section.children_iter() {
                 if row.tag_name() != Some("tr") {
                     continue;
                 }
 
                 let cells: Vec<_> = row
-                    .children()
-                    .into_iter()
+                    .children_iter()
                     .filter(|cell| matches!(cell.tag_name(), Some("th" | "td")))
                     .collect();
 

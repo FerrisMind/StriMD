@@ -4,6 +4,8 @@ use std::borrow::Cow;
 
 use crate::html::fragment::{HtmlFragment, HtmlNode, NodeId};
 
+const EMPTY_CHILDREN: [NodeId; 0] = [];
+
 /// A single node in an [`HtmlFragment`] tree.
 #[derive(Clone, Copy)]
 pub(crate) struct DomRef<'a> {
@@ -15,6 +17,11 @@ impl<'a> DomRef<'a> {
     #[must_use]
     pub(crate) fn new(fragment: &'a HtmlFragment, id: NodeId) -> Self {
         Self { fragment, id }
+    }
+
+    #[must_use]
+    pub(crate) fn id(&self) -> NodeId {
+        self.id
     }
 
     #[must_use]
@@ -43,14 +50,23 @@ impl<'a> DomRef<'a> {
     }
 
     #[must_use]
-    pub(crate) fn children(&self) -> Vec<DomRef<'a>> {
+    pub(crate) fn child_ids(&self) -> &'a [NodeId] {
         match self.fragment.node(self.id) {
-            Some(HtmlNode::Element { children, .. }) => children
-                .iter()
-                .map(|&child_id| Self::new(self.fragment, child_id))
-                .collect(),
-            _ => Vec::new(),
+            Some(HtmlNode::Element { children, .. }) => children.as_slice(),
+            _ => &EMPTY_CHILDREN,
         }
+    }
+
+    pub(crate) fn children_iter(&self) -> impl Iterator<Item = DomRef<'a>> + 'a {
+        self.child_ids()
+            .iter()
+            .copied()
+            .map(|child_id| Self::new(self.fragment, child_id))
+    }
+
+    #[must_use]
+    pub(crate) fn children(&self) -> Vec<DomRef<'a>> {
+        self.children_iter().collect()
     }
 
     pub(crate) fn for_each_attr<F>(&self, mut f: F)
@@ -136,19 +152,12 @@ impl<'a> DomRef<'a> {
 
     #[must_use]
     pub(crate) fn direct_task_checkbox(&self) -> Option<DomRef<'a>> {
-        if let Some(node) = self
-            .children()
-            .into_iter()
-            .find(|child| Self::is_task_checkbox(*child))
-        {
+        if let Some(node) = self.children_iter().find(|child| Self::is_task_checkbox(*child)) {
             return Some(node);
         }
-        for child in self.children() {
+        for child in self.children_iter() {
             if child.tag_name() == Some("p")
-                && let Some(input) = child
-                    .children()
-                    .into_iter()
-                    .find(|c| Self::is_task_checkbox(*c))
+                && let Some(input) = child.children_iter().find(|c| Self::is_task_checkbox(*c))
             {
                 return Some(input);
             }
@@ -181,13 +190,8 @@ impl<'a> DomRef<'a> {
         if self.tag_name() != Some("p") {
             return false;
         }
-        let meaningful: Vec<_> = self
-            .children()
-            .into_iter()
-            .filter(|c| !c.is_useless())
-            .collect();
         let mut has_badge = false;
-        for child in meaningful {
+        for child in self.children_iter().filter(|c| !c.is_useless()) {
             match child.tag_name() {
                 Some("img") => {
                     if !Self::is_badge_image(child) {
@@ -196,15 +200,14 @@ impl<'a> DomRef<'a> {
                     has_badge = true;
                 }
                 Some("a") => {
-                    let kids: Vec<_> = child
-                        .children()
-                        .into_iter()
-                        .filter(|c| !c.is_useless())
-                        .collect();
-                    if kids.len() != 1 || kids[0].tag_name() != Some("img") {
+                    let mut kids = child.children_iter().filter(|c| !c.is_useless());
+                    let Some(image) = kids.next() else {
+                        return false;
+                    };
+                    if kids.next().is_some() || image.tag_name() != Some("img") {
                         return false;
                     }
-                    if !Self::is_badge_image(kids[0]) {
+                    if !Self::is_badge_image(image) {
                         return false;
                     }
                     has_badge = true;

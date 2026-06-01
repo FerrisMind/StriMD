@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use pulldown_cmark::{CodeBlockKind, Event, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, Tag};
+#[cfg(feature = "math")]
+use pulldown_cmark::TagEnd;
 
 use crate::core::block::{BlockContent, CompiledMarkdown};
 use crate::html::sanitize;

@@ -3,6 +3,8 @@ use std::{ops::Add, sync::Arc};
 use bitflags::bitflags;
 use iced::{Element, Font, widget};
 
+use crate::core::ids::BlockId;
+
 use super::state::MarkState;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -129,6 +131,7 @@ pub struct MarkWidget<'a, Message, Theme = iced::Theme> {
     pub(crate) paragraph_spacing: Option<f32>,
 
     pub(crate) current_dropdown_id: usize,
+    pub(crate) current_block_id: Option<BlockId>,
 
     pub(crate) ruby_mode: RubyMode,
 }
@@ -151,6 +154,7 @@ impl<'a, M: 'a, T: 'a> MarkWidget<'a, M, T> {
             fn_github_alert_icon: None,
             style: None,
             current_dropdown_id: 0,
+            current_block_id: None,
             text_size: 16.0,
             heading_scale: 1.0,
             paragraph_spacing: None,

@@ -71,7 +71,7 @@ where
         let mut units: Vec<RubyUnit<'a, M, T>> = Vec::new();
         let mut current = RubyUnit::default();
 
-        for child in node.children() {
+        for child in node.children_iter() {
             if child.is_useless() {
                 continue;
             }
