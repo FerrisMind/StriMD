@@ -46,12 +46,11 @@ pub(crate) fn block_opens_alignment_wrapper(block: &RenderBlock) -> Option<Block
         if fragment_root_tag(fragment, root) == Some("center") {
             return Some(BlockAlignment::Center);
         }
-        if let Some(HtmlNode::Element { tag, attrs, .. }) = fragment.node(root) {
-            if tag.as_str() == "div" {
-                if let Some(align) = alignment_from_div_attrs(attrs) {
-                    return Some(align);
-                }
-            }
+        if let Some(HtmlNode::Element { tag, attrs, .. }) = fragment.node(root)
+            && tag.as_str() == "div"
+            && let Some(align) = alignment_from_div_attrs(attrs)
+        {
+            return Some(align);
         }
     }
     None
@@ -83,12 +82,14 @@ pub(crate) fn fragment_is_complete_alignment_wrapper(block: &RenderBlock) -> boo
             if tag.as_str() == "center" && !children.is_empty() {
                 return true;
             }
-            if tag.as_str() == "div" {
-                if let Some(HtmlNode::Element { attrs, children, .. }) = fragment.node(root) {
-                    if alignment_from_div_attrs(attrs).is_some() && !children.is_empty() {
-                        return true;
-                    }
-                }
+            if tag.as_str() == "div"
+                && let Some(HtmlNode::Element {
+                    attrs, children, ..
+                }) = fragment.node(root)
+                && alignment_from_div_attrs(attrs).is_some()
+                && !children.is_empty()
+            {
+                return true;
             }
         }
     }

@@ -65,14 +65,14 @@ impl<'a> DomRef<'a> {
     }
 
     #[must_use]
-    pub(crate) fn get_attr(&self, name: &str) -> Option<String> {
-        let mut found = None;
-        self.for_each_attr(|attr_name, value| {
-            if attr_name == name {
-                found = Some(value.to_string());
-            }
-        });
-        found
+    pub(crate) fn get_attr(&self, name: &str) -> Option<&'a str> {
+        let Some(HtmlNode::Element { attrs, .. }) = self.fragment.node(self.id) else {
+            return None;
+        };
+        attrs
+            .iter()
+            .find(|attr| attr.name.as_ref() == name)
+            .map(|attr| attr.value.as_ref())
     }
 
     #[must_use]
@@ -131,7 +131,7 @@ impl<'a> DomRef<'a> {
 
     #[must_use]
     pub(crate) fn is_task_checkbox(node: DomRef<'_>) -> bool {
-        node.tag_name() == Some("input") && node.get_attr("type").as_deref() == Some("checkbox")
+        node.tag_name() == Some("input") && node.get_attr("type") == Some("checkbox")
     }
 
     #[must_use]
@@ -144,22 +144,16 @@ impl<'a> DomRef<'a> {
             return Some(node);
         }
         for child in self.children() {
-            if child.tag_name() == Some("p") {
-                if let Some(input) = child
+            if child.tag_name() == Some("p")
+                && let Some(input) = child
                     .children()
                     .into_iter()
                     .find(|c| Self::is_task_checkbox(*c))
-                {
-                    return Some(input);
-                }
+            {
+                return Some(input);
             }
         }
         None
-    }
-
-    #[must_use]
-    pub(crate) fn has_task_checkbox_child(&self) -> bool {
-        self.direct_task_checkbox().is_some()
     }
 
     #[must_use]
@@ -179,28 +173,6 @@ impl<'a> DomRef<'a> {
             }
             _ => {}
         }
-    }
-
-    fn find_descendant(&self, mut pred: impl FnMut(DomRef<'a>) -> bool) -> bool {
-        fn walk<'a>(
-            node: DomRef<'a>,
-            depth: usize,
-            pred: &mut impl FnMut(DomRef<'a>) -> bool,
-        ) -> bool {
-            if depth > 8 {
-                return false;
-            }
-            if pred(node) {
-                return true;
-            }
-            for child in node.children() {
-                if walk(child, depth + 1, pred) {
-                    return true;
-                }
-            }
-            false
-        }
-        walk(*self, 0, &mut pred)
     }
 
     /// Paragraph that only contains badge/shield image(s), optionally wrapped in a link.
@@ -256,13 +228,16 @@ impl<'a> DomRef<'a> {
     }
 }
 
-pub(crate) fn alignment_read(data: &mut crate::backends::iced::structs::ChildData, dom: DomRef<'_>) {
+pub(crate) fn alignment_read(
+    data: &mut crate::backends::iced::structs::ChildData,
+    dom: DomRef<'_>,
+) {
     let Some(align) = dom.get_attr("align") else {
         return;
     };
     use crate::backends::iced::structs::ChildAlignment;
 
-    if matches!(align.as_str(), "right" | "center" | "centre") {
+    if matches!(align, "right" | "center" | "centre") {
         data.alignment = Some(if align == "right" {
             ChildAlignment::Right
         } else {

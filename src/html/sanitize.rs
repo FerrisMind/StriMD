@@ -115,8 +115,7 @@ mod tests {
 
     #[test]
     fn escape_policy_does_not_emit_html_block() {
-        let content =
-            block_content_from_raw_html("<span>x</span>", RawHtmlPolicy::Escape);
+        let content = block_content_from_raw_html("<span>x</span>", RawHtmlPolicy::Escape);
         assert!(matches!(content, BlockContent::Unsupported { .. }));
     }
 

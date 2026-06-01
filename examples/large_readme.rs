@@ -199,7 +199,7 @@ enum Page {
 }
 
 impl Page {
-    const ALL: [Self; 2] = [Self::TestSuite, Self::QuantumLauncher];
+    const ALL: [Self; 3] = [Self::TestSuite, Self::QuantumLauncher, Self::Mpf];
 
     fn get_contents(&self) -> &'static str {
         match self {

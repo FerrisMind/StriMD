@@ -45,7 +45,9 @@ fn write_fragment_node(
 ) -> Result<(), RenderError> {
     use crate::html::fragment::HtmlNode;
     let Some(node) = fragment.node(id) else {
-        return Err(RenderError::new(format!("missing HtmlFragment node {id:?}")));
+        return Err(RenderError::new(format!(
+            "missing HtmlFragment node {id:?}"
+        )));
     };
     match node {
         HtmlNode::Text(text) => out.push_str(text),
@@ -54,7 +56,11 @@ fn write_fragment_node(
             out.push_str(comment);
             out.push_str("-->");
         }
-        HtmlNode::Element { tag, attrs, children } => {
+        HtmlNode::Element {
+            tag,
+            attrs,
+            children,
+        } => {
             out.push('<');
             out.push_str(tag.as_str());
             for attr in attrs {

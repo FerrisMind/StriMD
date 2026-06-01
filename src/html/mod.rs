@@ -1,7 +1,9 @@
+#[cfg(all(feature = "_iced_backend", not(feature = "no_iced")))]
+pub(crate) mod block_alignment;
 pub mod fragment;
 pub mod preprocess;
 pub mod sanitize;
-pub(crate) mod block_alignment;
+pub mod tagfilter;
 
 #[cfg(feature = "static")]
 pub mod treesink;

@@ -11,7 +11,11 @@ impl<'a, M: Clone + 'static, T: ValidTheme + 'a> MarkWidget<'a, M, T>
 where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
 {
-    pub(crate) fn draw_table(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
+    pub(crate) fn draw_table(
+        &mut self,
+        node: DomRef<'_>,
+        data: ChildData,
+    ) -> RenderedSpan<'a, M, T> {
         let mut header_cells: Vec<RenderedSpan<'a, M, T>> = Vec::new();
         let mut column_alignments: Vec<Option<ChildAlignment>> = Vec::new();
         let mut body_rows: Vec<Vec<RenderedSpan<'a, M, T>>> = Vec::new();

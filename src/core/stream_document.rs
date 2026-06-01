@@ -82,6 +82,7 @@ impl StreamDocument {
             adapter: PulldownAdapter::new(PulldownAdapterOptions {
                 pulldown: parse_options.pulldown,
                 prefer_display_for_pending: prefer_display,
+                gfm_extended_autolinks: options.profile.uses_gfm_extensions(),
             }),
             blocks: Vec::new(),
             block_index: HashMap::new(),

@@ -42,7 +42,11 @@ fn write_fragment_node(out: &mut String, fragment: &HtmlFragment, id: NodeId) {
             out.push_str(comment);
             out.push_str("-->");
         }
-        HtmlNode::Element { tag, attrs, children } => {
+        HtmlNode::Element {
+            tag,
+            attrs,
+            children,
+        } => {
             out.push('<');
             out.push_str(tag.as_str());
             for attr in attrs {
@@ -127,7 +131,7 @@ mod tests {
     use html5ever::ParseOpts;
 
     fn parse_html(input: &str) -> RcDom {
-        use html5ever::{local_name, ns, QualName, tendril::TendrilSink};
+        use html5ever::{QualName, local_name, ns, tendril::TendrilSink};
         html5ever::parse_fragment(
             RcDom::default(),
             ParseOpts::default(),
@@ -168,7 +172,11 @@ mod tests {
         let HtmlNode::Element { attrs, .. } = fragment.node(root).expect("img") else {
             panic!("not element");
         };
-        assert!(attrs.iter().any(|a| a.name.as_ref() == "src" && a.value.as_ref() == "x.png"));
+        assert!(
+            attrs
+                .iter()
+                .any(|a| a.name.as_ref() == "src" && a.value.as_ref() == "x.png")
+        );
     }
 
     #[test]

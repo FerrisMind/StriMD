@@ -1,19 +1,17 @@
-use std::sync::Arc;
-
-use iced::{Element, Font, Length, Padding, Pixels, border, padding, widget};
 use iced::widget::markdown::{self};
+use iced::{Element, Font, Length, Padding, Pixels, border, padding, widget};
 
-use crate::html::block_cache::CachedBlock;
 use crate::html::block_alignment::BlockAlignment;
+use crate::html::block_cache::CachedBlock;
 
 use super::{
     dom::{self, DomRef},
     state::MarkState,
-    style::{DEFAULT_INLINE_CODE_BACKGROUND, DEFAULT_INLINE_CODE_FOREGROUND},
     structs::{
         ChildAlignment, ChildData, ChildDataFlags, Emp, ImageInfo, MarkWidget, RenderedSpan,
         UpdateMsg, UpdateMsgKind,
     },
+    style::{DEFAULT_INLINE_CODE_BACKGROUND, DEFAULT_INLINE_CODE_FOREGROUND},
     widgets::{link, link_text, underline},
 };
 use crate::html::block_cache::CachedCodeBlock;
@@ -48,7 +46,11 @@ impl<'a, M: Clone + 'static, T: ValidTheme + 'a> MarkWidget<'a, M, T>
 where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
 {
-    pub(crate) fn traverse_dom(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
+    pub(crate) fn traverse_dom(
+        &mut self,
+        node: DomRef<'_>,
+        data: ChildData,
+    ) -> RenderedSpan<'a, M, T> {
         if let Some(text) = node.text_contents() {
             fn calc_size(text_size: f32, scaling: f32, factor: f32) -> f32 {
                 text_size * (1.0 + ((scaling - 1.0) * factor))
@@ -128,7 +130,7 @@ where
             dom::alignment_read(&mut data, node);
         }
 
-        let e = match name {
+        match name {
             "summary" | "kbd" | "span" | "html" | "body" | "p" | "div" | "thead" | "tbody"
             | "tfoot" => self.render_children(node, data),
 
@@ -157,7 +159,8 @@ where
             "blockquote" => widget::stack!(
                 widget::row![
                     widget::space().width(10),
-                    widget::container(self.render_children(node, data).render()).width(Length::Fill)
+                    widget::container(self.render_children(node, data).render())
+                        .width(Length::Fill)
                 ]
                 .width(Length::Fill),
                 widget::rule::vertical(2)
@@ -188,7 +191,7 @@ where
             "hr" => widget::rule::horizontal(1.0).into(),
             "head" | "title" | "meta" | "rtc" | "rp" | "rb" => RenderedSpan::None,
 
-            "input" => match node.get_attr("type").as_deref().unwrap_or("text") {
+            "input" => match node.get_attr("type").unwrap_or("text") {
                 "checkbox" => {
                     let checked = node.get_attr("checked").is_some();
                     widget::checkbox(checked).into()
@@ -221,9 +224,7 @@ where
                 weight: iced::font::Weight::Bold,
                 ..self.font
             })]),
-        };
-
-        e
+        }
     }
 
     fn draw_details(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
@@ -283,7 +284,11 @@ where
         e
     }
 
-    fn get_summary_elements(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
+    fn get_summary_elements(
+        &mut self,
+        node: DomRef<'_>,
+        data: ChildData,
+    ) -> RenderedSpan<'a, M, T> {
         node.children()
             .into_iter()
             .find(|child| child.tag_name() == Some("summary"))
@@ -332,12 +337,7 @@ where
         }
 
         if let Some(func) = self.fn_drawing_image.as_deref() {
-            return func(ImageInfo {
-                url: &url,
-                width,
-                height,
-            })
-            .into();
+            return func(ImageInfo { url, width, height }).into();
         }
         RenderedSpan::None
     }
@@ -356,13 +356,13 @@ where
 
             if children_empty {
                 RenderedSpan::Spans(vec![
-                    link_text(widget::span(url.clone()), url, msg).color(link_col),
+                    link_text(widget::span(url.to_string()), url.to_string(), msg).color(link_col),
                 ])
             } else if let RenderedSpan::Spans(n) = children {
                 RenderedSpan::Spans(
                     n.into_iter()
                         .map(|n| {
-                            link_text(n, url.clone(), msg)
+                            link_text(n, url.to_string(), msg)
                                 .color(link_col)
                                 .underline(true)
                         })
@@ -370,7 +370,7 @@ where
                 )
             } else if let Some(handler) = msg {
                 widget::mouse_area(children.render())
-                    .on_press(handler(url.clone()))
+                    .on_press(handler(url.to_string()))
                     .into()
             } else {
                 children.render().into()
@@ -439,7 +439,7 @@ where
                 let badge_row: Element<'a, M, T> = shield_row.width(Length::Shrink).into();
                 column.push(if let Some(align) = data.alignment {
                     RenderedSpan::Elem(
-                        Self::stack_align_in_viewport(badge_row, align).into(),
+                        Self::stack_align_in_viewport(badge_row, align),
                         Emp::NonEmpty,
                     )
                 } else {
@@ -517,7 +517,7 @@ where
                 Emp::NonEmpty,
             ),
             other => RenderedSpan::Elem(
-                Self::stack_align_in_viewport(other.render(), align).into(),
+                Self::stack_align_in_viewport(other.render(), align),
                 Emp::NonEmpty,
             ),
         }
@@ -573,13 +573,10 @@ where
             .align_y(iced::Alignment::Start)
             .into()
         } else {
-            widget::row![
-                widget::text("•").size(self.text_size),
-                content.render(),
-            ]
-            .spacing(marker_gap)
-            .align_y(iced::Alignment::Start)
-            .into()
+            widget::row![widget::text("•").size(self.text_size), content.render(),]
+                .spacing(marker_gap)
+                .align_y(iced::Alignment::Start)
+                .into()
         }
     }
 
@@ -653,11 +650,7 @@ where
     }
 
     /// Badge `<p>` with only `img` or `a>img` — render the graphic directly (no extra block wrap).
-    fn render_shield_badge(
-        &mut self,
-        paragraph: DomRef<'_>,
-        data: ChildData,
-    ) -> Element<'a, M, T> {
+    fn render_shield_badge(&mut self, paragraph: DomRef<'_>, data: ChildData) -> Element<'a, M, T> {
         let mut row = widget::Row::new().spacing(6.0);
         let mut has_badge = false;
         for child in paragraph.children() {
@@ -690,10 +683,10 @@ where
                 let lang = code_node
                     .get_attr("class")
                     .and_then(|c| c.strip_prefix("language-").map(str::to_string));
-                let items = Arc::new(crate::backends::iced::iced_markdown_items_for_codeblock(
+                let items = crate::backends::iced::iced_markdown_items_for_codeblock(
                     lang.as_deref(),
                     text.trim_end_matches('\n'),
-                ));
+                );
                 if let Some(lines) = items.iter().find_map(|item| match item {
                     markdown::Item::CodeBlock { lines, .. } => Some(lines.as_slice()),
                     _ => None,
@@ -718,13 +711,11 @@ where
 
     fn codeblock(&self, code: String, size: f32, inline: bool) -> RenderedSpan<'a, M, T> {
         let style = self.style;
-        let inline_background = style
-            .and_then(|s| s.inline_code_background)
-            .or(if inline {
-                Some(DEFAULT_INLINE_CODE_BACKGROUND)
-            } else {
-                None
-            });
+        let inline_background = style.and_then(|s| s.inline_code_background).or(if inline {
+            Some(DEFAULT_INLINE_CODE_BACKGROUND)
+        } else {
+            None
+        });
         let inline_color = style.and_then(|s| s.inline_code_color);
         let text_color = style.and_then(|s| s.text_color);
 
@@ -772,17 +763,12 @@ where
         }
     }
 
-    fn wrap_fenced_code_container(
-        &self,
-        inner: Element<'a, M, T>,
-    ) -> RenderedSpan<'a, M, T> {
+    fn wrap_fenced_code_container(&self, inner: Element<'a, M, T>) -> RenderedSpan<'a, M, T> {
         let settings = self.markdown_code_settings();
-        let shell = widget::container(
-            widget::container(inner).padding(settings.code_size),
-        )
-        .width(Length::Fill)
-        .padding(settings.code_size / 4.0)
-        .class(<T as markdown::Catalog>::code_block());
+        let shell = widget::container(widget::container(inner).padding(settings.code_size))
+            .width(Length::Fill)
+            .padding(settings.code_size / 4.0)
+            .class(<T as markdown::Catalog>::code_block());
         let element = if let Some(draw) = &self.fn_drawing_pre_block {
             draw(shell.into())
         } else {
@@ -896,52 +882,46 @@ where
         let mut index = 0;
         while index < cache.len() {
             let block_data = child_data_for_block_alignment(cache.entry_alignment(index));
-            if let Some(CachedBlock::Fragment(fragment)) = cache.entry(index) {
-                if Self::fragment_is_shield_paragraph(fragment) {
-                    let mut row = widget::Row::new().spacing(6.0);
-                    while index < cache.len() {
-                        match cache.entry(index) {
-                            Some(CachedBlock::Empty) => {
-                                index += 1;
-                                continue;
-                            }
-                            Some(CachedBlock::Fragment(f))
-                                if Self::fragment_is_shield_paragraph(f) =>
-                            {
-                                let roots = DomRef::fragment_roots(f);
-                                if roots.len() == 1 {
-                                    row = row.push(
-                                        self.render_shield_badge(
-                                            roots[0],
-                                            child_data_for_block_alignment(
-                                                cache.entry_alignment(index),
-                                            ),
-                                        ),
-                                    );
-                                } else {
-                                    row = row.push(
-                                        self.render_fragment_roots(
-                                            f,
-                                            child_data_for_block_alignment(
-                                                cache.entry_alignment(index),
-                                            ),
-                                        )
-                                        .render(),
-                                    );
-                                }
-                                index += 1;
-                            }
-                            _ => break,
+            if let Some(CachedBlock::Fragment(fragment)) = cache.entry(index)
+                && Self::fragment_is_shield_paragraph(fragment)
+            {
+                let mut row = widget::Row::new().spacing(6.0);
+                while index < cache.len() {
+                    match cache.entry(index) {
+                        Some(CachedBlock::Empty) => {
+                            index += 1;
+                            continue;
                         }
+                        Some(CachedBlock::Fragment(f)) if Self::fragment_is_shield_paragraph(f) => {
+                            let roots = DomRef::fragment_roots(f);
+                            if roots.len() == 1 {
+                                row = row.push(self.render_shield_badge(
+                                    roots[0],
+                                    child_data_for_block_alignment(cache.entry_alignment(index)),
+                                ));
+                            } else {
+                                row = row.push(
+                                    self.render_fragment_roots(
+                                        f,
+                                        child_data_for_block_alignment(
+                                            cache.entry_alignment(index),
+                                        ),
+                                    )
+                                    .render(),
+                                );
+                            }
+                            index += 1;
+                        }
+                        _ => break,
                     }
-                    let badge_row: Element<'a, M, T> = row.width(Length::Shrink).into();
-                    column = column.push(if let Some(align) = block_data.alignment {
-                        Self::stack_align_in_viewport(badge_row, align)
-                    } else {
-                        badge_row
-                    });
-                    continue;
                 }
+                let badge_row: Element<'a, M, T> = row.width(Length::Shrink).into();
+                column = column.push(if let Some(align) = block_data.alignment {
+                    Self::stack_align_in_viewport(badge_row, align)
+                } else {
+                    badge_row
+                });
+                continue;
             }
 
             let mut center_wrapper_fragment = false;
@@ -966,7 +946,7 @@ where
             let element = span.render();
             column = column.push(if let Some(align) = block_data.alignment {
                 if center_wrapper_fragment {
-                    element.into()
+                    element
                 } else {
                     Self::stack_align_in_viewport(
                         widget::container(element).width(Length::Shrink).into(),
@@ -974,7 +954,7 @@ where
                     )
                 }
             } else {
-                element.into()
+                element
             });
         }
         column.into()
@@ -1080,18 +1060,11 @@ where
         settings
     }
 
-    fn render_fenced_code_block(
-        &self,
-        block: &'a CachedCodeBlock,
-    ) -> RenderedSpan<'a, M, T> {
-        if let Some(lines) = block
-            .markdown_items
-            .iter()
-            .find_map(|item| match item {
-                markdown::Item::CodeBlock { lines, .. } => Some(lines.as_slice()),
-                _ => None,
-            })
-        {
+    fn render_fenced_code_block(&self, block: &'a CachedCodeBlock) -> RenderedSpan<'a, M, T> {
+        if let Some(lines) = block.markdown_items.iter().find_map(|item| match item {
+            markdown::Item::CodeBlock { lines, .. } => Some(lines.as_slice()),
+            _ => None,
+        }) {
             let settings = self.markdown_code_settings();
             return self.wrap_fenced_code_container(self.fenced_code_inner(lines, &settings));
         }
@@ -1115,12 +1088,13 @@ where
 }
 
 fn child_data_for_block_alignment(align: Option<BlockAlignment>) -> ChildData {
-    let mut data = ChildData::default();
-    data.alignment = align.map(|a| match a {
-        BlockAlignment::Center => ChildAlignment::Center,
-        BlockAlignment::Right => ChildAlignment::Right,
-    });
-    data
+    ChildData {
+        alignment: align.map(|a| match a {
+            BlockAlignment::Center => ChildAlignment::Center,
+            BlockAlignment::Right => ChildAlignment::Right,
+        }),
+        ..Default::default()
+    }
 }
 
 fn text_size_for_data(text_size: f32, heading_scale: f32, heading_weight: u16) -> f32 {

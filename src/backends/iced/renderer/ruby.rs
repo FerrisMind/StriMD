@@ -25,7 +25,11 @@ impl<'a, M: Clone + 'static, T: ValidTheme + 'a> MarkWidget<'a, M, T>
 where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
 {
-    pub(crate) fn draw_ruby(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
+    pub(crate) fn draw_ruby(
+        &mut self,
+        node: DomRef<'_>,
+        data: ChildData,
+    ) -> RenderedSpan<'a, M, T> {
         let units = self.ruby_collect_units(node, data);
         self.draw_ruby_units(units)
     }

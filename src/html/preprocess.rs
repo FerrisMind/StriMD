@@ -35,21 +35,21 @@ pub(crate) fn normalize_legacy_alignment_wrappers(html: &str) -> Cow<'_, str> {
     let bytes = html.as_bytes();
 
     while i < bytes.len() {
-        if bytes[i] == b'<' {
-            if let Some(tag_end) = html[i..].find('>') {
-                let tag = &html[i..=i + tag_end];
-                if is_align_center_div_open(tag) {
-                    out.push_str("<center>");
-                    align_div_depth = align_div_depth.saturating_add(1);
-                    i = i + tag_end + 1;
-                    continue;
-                }
-                if tag.starts_with("</div") && align_div_depth > 0 {
-                    out.push_str("</center>");
-                    align_div_depth -= 1;
-                    i = i + tag_end + 1;
-                    continue;
-                }
+        if bytes[i] == b'<'
+            && let Some(tag_end) = html[i..].find('>')
+        {
+            let tag = &html[i..=i + tag_end];
+            if is_align_center_div_open(tag) {
+                out.push_str("<center>");
+                align_div_depth = align_div_depth.saturating_add(1);
+                i = i + tag_end + 1;
+                continue;
+            }
+            if tag.starts_with("</div") && align_div_depth > 0 {
+                out.push_str("</center>");
+                align_div_depth -= 1;
+                i = i + tag_end + 1;
+                continue;
             }
         }
         out.push(bytes[i] as char);
@@ -78,11 +78,22 @@ fn is_align_center_div_open(tag: &str) -> bool {
 
 #[cfg(feature = "_html_preprocess")]
 fn apply_lol_html_rewrites(html: &str) -> Result<String, lol_html::errors::RewritingError> {
-    use lol_html::{element, rewrite_str, RewriteStrSettings};
+    use lol_html::{RewriteStrSettings, element, rewrite_str};
 
     const EVENT_ATTRS: &[&str] = &[
-        "onclick", "ondblclick", "onmousedown", "onmouseup", "onmouseover", "onmouseout",
-        "onkeydown", "onkeyup", "onkeypress", "onload", "onerror", "onfocus", "onblur",
+        "onclick",
+        "ondblclick",
+        "onmousedown",
+        "onmouseup",
+        "onmouseover",
+        "onmouseout",
+        "onkeydown",
+        "onkeyup",
+        "onkeypress",
+        "onload",
+        "onerror",
+        "onfocus",
+        "onblur",
     ];
 
     rewrite_str(
@@ -120,9 +131,7 @@ mod tests {
 
     #[test]
     fn div_align_center_becomes_center_element() {
-        let out = normalize_legacy_alignment_wrappers(
-            "<div align=\"center\"><h1>Title</h1></div>",
-        );
+        let out = normalize_legacy_alignment_wrappers("<div align=\"center\"><h1>Title</h1></div>");
         assert_eq!(out, "<center><h1>Title</h1></center>");
     }
 

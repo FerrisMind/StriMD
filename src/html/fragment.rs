@@ -114,7 +114,11 @@ impl HtmlFragment {
         attrs: Vec<HtmlAttr>,
         children: Vec<NodeId>,
     ) -> NodeId {
-        self.push_node(HtmlNode::Element { tag, attrs, children })
+        self.push_node(HtmlNode::Element {
+            tag,
+            attrs,
+            children,
+        })
     }
 
     pub(crate) fn push_text(&mut self, text: Arc<str>) -> NodeId {

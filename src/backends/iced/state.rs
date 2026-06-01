@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::html::block_cache::{BlockRenderCache, CachedBlock};
 use super::structs::{UpdateMsg, UpdateMsgKind};
-use crate::core::document::Document;
 use crate::core::block::RenderBlock;
+use crate::core::document::Document;
+use crate::html::block_cache::{BlockRenderCache, CachedBlock};
 use crate::html::fragment::HtmlFragment;
 use crate::profile::ParseProfile;
 
@@ -204,7 +204,7 @@ fn find_image_links_dom(node: DomRef<'_>, storage: &mut HashSet<String>) {
         && let Some(url) = node.get_attr("src")
         && !url.is_empty()
     {
-        storage.insert(url);
+        storage.insert(url.to_string());
     }
     for child in node.children() {
         find_image_links_dom(child, storage);

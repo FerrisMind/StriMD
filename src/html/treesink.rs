@@ -4,9 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 use html5ever::tendril::StrTendril;
-use html5ever::tree_builder::{
-    ElementFlags, NodeOrText, QuirksMode, TreeSink,
-};
+use html5ever::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
 use html5ever::{Attribute, ExpandedName, QualName};
 
 use crate::core::error::HtmlFragmentError;
@@ -211,12 +209,7 @@ impl TreeSink for FragmentSink {
         }
     }
 
-    fn create_element(
-        &self,
-        name: QualName,
-        attrs: Vec<Attribute>,
-        flags: ElementFlags,
-    ) -> Handle {
+    fn create_element(&self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> Handle {
         let html_attrs = attrs
             .into_iter()
             .map(|attr| HtmlAttr {
@@ -340,7 +333,10 @@ impl TreeSink for FragmentSink {
     }
 
     fn add_attrs_if_missing(&self, target: &Handle, attrs: Vec<Attribute>) {
-        let SinkData::Element { attrs: existing, .. } = &target.0.data else {
+        let SinkData::Element {
+            attrs: existing, ..
+        } = &target.0.data
+        else {
             panic!("add_attrs_if_missing on non-element");
         };
         let mut existing = existing.borrow_mut();
@@ -407,7 +403,8 @@ mod tests {
     #[test]
     fn treesink_preserves_div_align_attribute() {
         use crate::html::preprocess::normalize_legacy_alignment_wrappers;
-        let html = normalize_legacy_alignment_wrappers("<div align=\"center\"><h1>Title</h1></div>");
+        let html =
+            normalize_legacy_alignment_wrappers("<div align=\"center\"><h1>Title</h1></div>");
         let fragment = parse_html_fragment(html.as_ref()).expect("parse");
         assert!(
             fragment
@@ -441,7 +438,7 @@ mod tests {
     #[test]
     fn treesink_matches_rcdom_converter() {
         use crate::html::rcdom_compat;
-        use html5ever::{local_name, ns, ParseOpts, QualName, tendril::TendrilSink};
+        use html5ever::{ParseOpts, QualName, local_name, ns, tendril::TendrilSink};
         use markup5ever_rcdom::RcDom;
 
         let html = "<details><summary>Title</summary><img src=\"a.png\"></details>";

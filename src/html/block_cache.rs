@@ -1,22 +1,21 @@
 //! Compile-once cache mapping [`RenderBlock`] values to [`HtmlFragment`] trees for rendering.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::rc::Rc;
 
-use pulldown_cmark::{html, Event, Options, Parser};
+use pulldown_cmark::{Parser, html};
 
-use crate::core::block::{
-    BlockContent, BlockStatus, CompiledMarkdown, RenderBlock,
-};
-use crate::core::ids::BlockId;
+use crate::core::block::{BlockContent, BlockStatus, CompiledMarkdown, RenderBlock};
 use crate::core::document::Document;
-use crate::html::block_alignment::{
-    block_closes_alignment_wrapper, block_opens_alignment_wrapper, fragment_is_complete_alignment_wrapper,
-    BlockAlignment,
-};
-use crate::html::fragment::HtmlFragment;
+use crate::core::ids::BlockId;
 #[cfg(feature = "stream")]
 use crate::core::{StreamDocument, StreamPatch, StreamUpdate};
+use crate::html::block_alignment::{
+    BlockAlignment, block_closes_alignment_wrapper, block_opens_alignment_wrapper,
+    fragment_is_complete_alignment_wrapper,
+};
+use crate::html::fragment::HtmlFragment;
+use crate::profile::ParseProfile;
 
 /// Fenced code payload for backends that render code blocks outside the DOM.
 #[derive(Debug, Clone)]
@@ -25,7 +24,7 @@ pub(crate) struct CachedCodeBlock {
     pub(crate) language: Option<String>,
     pub(crate) code: String,
     /// Pre-parsed iced markdown items (highlighted lines for [`iced::widget::markdown::code_block`]).
-    pub(crate) markdown_items: Arc<Vec<iced::widget::markdown::Item>>,
+    pub(crate) markdown_items: Rc<Vec<iced::widget::markdown::Item>>,
 }
 
 /// One compiled block ready for DOM traversal.
@@ -36,8 +35,8 @@ pub(crate) enum CachedBlock {
 }
 
 /// Block-ordered render cache; entries are built once per block revision.
-#[derive(Default)]
 pub(crate) struct BlockRenderCache {
+    profile: ParseProfile,
     entries: Vec<CachedBlock>,
     entry_alignment: Vec<Option<BlockAlignment>>,
     ids: Vec<BlockId>,
@@ -46,6 +45,22 @@ pub(crate) struct BlockRenderCache {
     alignment_context: Option<BlockAlignment>,
     #[cfg(test)]
     compile_count: usize,
+}
+
+impl Default for BlockRenderCache {
+    fn default() -> Self {
+        Self {
+            profile: ParseProfile::GitHubPreview,
+            entries: Vec::new(),
+            entry_alignment: Vec::new(),
+            ids: Vec::new(),
+            statuses: Vec::new(),
+            indices: HashMap::new(),
+            alignment_context: None,
+            #[cfg(test)]
+            compile_count: 0,
+        }
+    }
 }
 
 impl BlockRenderCache {
@@ -58,7 +73,9 @@ impl BlockRenderCache {
 
     #[must_use]
     pub fn from_document(document: &Document) -> Self {
-        Self::from_blocks(document.blocks())
+        let mut cache = Self::from_blocks(document.blocks());
+        cache.profile = document.profile();
+        cache
     }
 
     #[must_use]
@@ -127,6 +144,7 @@ impl BlockRenderCache {
 
     #[cfg(feature = "stream")]
     pub fn sync_from_stream(&mut self, stream: &StreamDocument) {
+        self.profile = stream.profile();
         let mut blocks: Vec<RenderBlock> = stream.blocks().cloned().collect();
         if let Some(pending) = stream.pending() {
             blocks.push(pending.clone());
@@ -169,15 +187,16 @@ impl BlockRenderCache {
         }
         match &block.content {
             BlockContent::Markdown(compiled) => {
-                CachedBlock::Fragment(markdown_to_fragment(compiled))
+                CachedBlock::Fragment(markdown_to_fragment(compiled, self.profile))
             }
             BlockContent::Html(fragment) => CachedBlock::Fragment(fragment.clone()),
             BlockContent::Code { lang, .. } => {
                 let code = block.source.trim_end_matches('\n').to_string();
-                let markdown_items = Arc::new(crate::backends::iced::iced_markdown_items_for_codeblock(
-                    lang.as_deref(),
-                    &code,
-                ));
+                let markdown_items =
+                    Rc::new(crate::backends::iced::iced_markdown_items_for_codeblock(
+                        lang.as_deref(),
+                        &code,
+                    ));
                 CachedBlock::Code(CachedCodeBlock {
                     language: lang.clone(),
                     code,
@@ -185,7 +204,7 @@ impl BlockRenderCache {
                 })
             }
             BlockContent::PendingMarkdown => {
-                CachedBlock::Fragment(pending_markdown_to_fragment(&block.source))
+                CachedBlock::Fragment(pending_markdown_to_fragment(&block.source, self.profile))
             }
             BlockContent::Unsupported { .. } => CachedBlock::Empty,
         }
@@ -255,19 +274,33 @@ impl BlockRenderCache {
     }
 }
 
-fn markdown_source_to_html(source: &str, profile: crate::profile::ParseProfile) -> String {
-    let options = profile.pulldown_options();
-    let events: Vec<Event<'static>> = Parser::new_ext(source, options)
-        .map(|event| event.into_static())
-        .collect();
-    let mut html_buf = String::new();
-    html::push_html(&mut html_buf, events.iter().cloned());
+fn finish_markdown_html(mut html_buf: String, profile: ParseProfile) -> String {
+    if profile.uses_gfm_extensions() {
+        html_buf = crate::html::tagfilter::apply_gfm_tagfilter(&html_buf);
+    }
     html_buf
 }
 
-fn markdown_to_fragment(compiled: &CompiledMarkdown) -> HtmlFragment {
+#[cfg(test)]
+fn markdown_source_to_html(source: &str, profile: ParseProfile) -> String {
+    let prepared = if profile.uses_gfm_extensions() {
+        crate::parse::gfm_preprocess::apply_gfm_extended_autolinks(source)
+    } else {
+        source.to_string()
+    };
+    let options = profile.pulldown_options();
+    let mut html_buf = String::new();
+    html::push_html(
+        &mut html_buf,
+        Parser::new_ext(&prepared, options).map(|event| event.into_static()),
+    );
+    finish_markdown_html(html_buf, profile)
+}
+
+fn markdown_to_fragment(compiled: &CompiledMarkdown, profile: ParseProfile) -> HtmlFragment {
     let mut html_buf = String::new();
     html::push_html(&mut html_buf, compiled.events().iter().cloned());
+    let html_buf = finish_markdown_html(html_buf, profile);
     if html_buf.is_empty() {
         HtmlFragment::from_html("<p></p>")
     } else {
@@ -275,12 +308,18 @@ fn markdown_to_fragment(compiled: &CompiledMarkdown) -> HtmlFragment {
     }
 }
 
-fn pending_markdown_to_fragment(source: &str) -> HtmlFragment {
-    let events: Vec<Event<'static>> = Parser::new_ext(source, Options::all())
-        .map(|event| event.into_static())
-        .collect();
+fn pending_markdown_to_fragment(source: &str, profile: ParseProfile) -> HtmlFragment {
+    let prepared = if profile.uses_gfm_extensions() {
+        crate::parse::gfm_preprocess::apply_gfm_extended_autolinks(source)
+    } else {
+        source.to_string()
+    };
     let mut html_buf = String::new();
-    html::push_html(&mut html_buf, events.iter().cloned());
+    html::push_html(
+        &mut html_buf,
+        Parser::new_ext(&prepared, profile.pulldown_options()).map(|event| event.into_static()),
+    );
+    let html_buf = finish_markdown_html(html_buf, profile);
     if html_buf.is_empty() {
         HtmlFragment::from_html(&format!("<p>{}</p>", escape_html_text(source)))
     } else {
@@ -391,14 +430,18 @@ mod tests {
             &ParseOptions::default(),
         )
         .expect("parse");
-        assert!(blocks
-            .iter()
-            .any(|b| matches!(b.content, BlockContent::Html(_))));
+        assert!(
+            blocks
+                .iter()
+                .any(|b| matches!(b.content, BlockContent::Html(_)))
+        );
         let cache = BlockRenderCache::from_blocks(&blocks);
-        assert!(cache
-            .entries()
-            .iter()
-            .any(|entry| matches!(entry, CachedBlock::Fragment(_))));
+        assert!(
+            cache
+                .entries()
+                .iter()
+                .any(|entry| matches!(entry, CachedBlock::Fragment(_)))
+        );
     }
 
     #[cfg(feature = "stream")]
@@ -470,13 +513,15 @@ mod tests {
     }
 
     fn fragment_has_tag(fragment: &HtmlFragment, expected: &str) -> bool {
-        fn walk(fragment: &HtmlFragment, id: crate::html::fragment::NodeId, expected: &str) -> bool {
+        fn walk(
+            fragment: &HtmlFragment,
+            id: crate::html::fragment::NodeId,
+            expected: &str,
+        ) -> bool {
             match fragment.node(id) {
                 Some(crate::html::fragment::HtmlNode::Element { tag, children, .. }) => {
                     tag.as_str() == expected
-                        || children
-                            .iter()
-                            .any(|&c| walk(fragment, c, expected))
+                        || children.iter().any(|&c| walk(fragment, c, expected))
                 }
                 _ => false,
             }
@@ -564,7 +609,10 @@ App { state: 1 }
         assert!(has_h1, "fragment missing h1, kinds={kinds:?}");
         assert!(has_h2, "fragment missing h2, kinds={kinds:?}");
         assert!(has_hr, "fragment missing hr, kinds={kinds:?}");
-        assert!(has_blockquote, "fragment missing blockquote, kinds={kinds:?}");
+        assert!(
+            has_blockquote,
+            "fragment missing blockquote, kinds={kinds:?}"
+        );
         for (i, block) in doc.blocks().iter().enumerate() {
             if block.kind != BlockKind::HtmlBlock {
                 continue;
@@ -595,8 +643,8 @@ App { state: 1 }
 fn demo() {}
 ```
 ";
-        let doc =
-            crate::core::document::Document::parse(HELLO, ParseProfile::GitHubPreview).expect("parse");
+        let doc = crate::core::document::Document::parse(HELLO, ParseProfile::GitHubPreview)
+            .expect("parse");
         let cache = BlockRenderCache::from_document(&doc);
         let idx = doc
             .blocks()
@@ -609,8 +657,8 @@ fn demo() {}
     #[test]
     fn hello_code_fence_routes_to_cached_code_block() {
         const SNIPPET: &str = "```rust\nfn main() {}\n```\n";
-        let doc =
-            crate::core::document::Document::parse(SNIPPET, ParseProfile::GitHubPreview).expect("parse");
+        let doc = crate::core::document::Document::parse(SNIPPET, ParseProfile::GitHubPreview)
+            .expect("parse");
         let cache = BlockRenderCache::from_document(&doc);
         let code_block = doc
             .blocks()
@@ -632,11 +680,7 @@ fn demo() {}
         let CachedBlock::Code(c) = cache.entry(idx).expect("cache entry") else {
             panic!("expected CachedBlock::Code");
         };
-        assert!(
-            c.code.contains("fn main"),
-            "code body wrong: {:?}",
-            c.code
-        );
+        assert!(c.code.contains("fn main"), "code body wrong: {:?}", c.code);
         assert!(
             !c.code.contains("# Hello"),
             "code must not be full document source"
@@ -659,9 +703,7 @@ fn demo() {}
             source: Arc::from(source),
             content: BlockContent::Markdown(CompiledMarkdown::new(
                 Arc::from(source),
-                Parser::new(source)
-                    .map(|e| e.into_static())
-                    .collect(),
+                Parser::new(source).map(|e| e.into_static()).collect(),
             )),
         }];
         let cache = BlockRenderCache::from_blocks(&blocks);
@@ -694,8 +736,8 @@ fn demo() {}
 
     #[test]
     fn ql_platforms_full_file_input_count() {
-        use crate::profile::ParseProfile;
         use super::markdown_source_to_html;
+        use crate::profile::ParseProfile;
         let md = include_str!("../../examples/assets/QL_README.md");
         let html = markdown_source_to_html(md, ParseProfile::GitHubPreview);
         let start = html.find("<h2>Platforms</h2>").expect("platforms heading");
@@ -709,7 +751,10 @@ fn demo() {}
         let inputs = section.matches("<input").count();
         let lis = section.matches("<li").count();
         eprintln!("inputs={inputs} lis={lis}");
-        assert!(inputs >= 10, "expected many platform checkboxes, got {inputs}");
+        assert!(
+            inputs >= 10,
+            "expected many platform checkboxes, got {inputs}"
+        );
         assert!(
             section.contains("<p><input"),
             "QL platforms use li>p>input; renderer must not duplicate checkbox in body"
@@ -718,8 +763,8 @@ fn demo() {}
 
     #[test]
     fn ql_loaders_list_item_uses_inline_input_not_wrapped_in_p() {
-        use crate::profile::ParseProfile;
         use super::markdown_source_to_html;
+        use crate::profile::ParseProfile;
         let md = include_str!("../../examples/assets/QL_README.md");
         let html = markdown_source_to_html(md, ParseProfile::GitHubPreview);
         let start = html.find("<h3>Loaders</h3>").expect("loaders");
@@ -733,17 +778,31 @@ fn demo() {}
 
     #[test]
     fn ql_and_test_have_task_list_blocks() {
-        use crate::core::document::Document;
         use crate::core::block::BlockKind;
+        use crate::core::document::Document;
         use crate::profile::ParseProfile;
         let test = include_str!("../../examples/assets/TEST.md");
         let ql = include_str!("../../examples/assets/QL_README.md");
         let test_doc = Document::parse(test, ParseProfile::GitHubPreview).unwrap();
         let ql_doc = Document::parse(ql, ParseProfile::GitHubPreview).unwrap();
-        let test_lists = test_doc.blocks().iter().filter(|b| b.kind == BlockKind::List).count();
-        let ql_lists = ql_doc.blocks().iter().filter(|b| b.kind == BlockKind::List).count();
-        assert!(test_lists >= 1, "TEST.md should have list blocks, got {test_lists}");
-        assert!(ql_lists >= 5, "QL_README should have many list blocks, got {ql_lists}");
+        let test_lists = test_doc
+            .blocks()
+            .iter()
+            .filter(|b| b.kind == BlockKind::List)
+            .count();
+        let ql_lists = ql_doc
+            .blocks()
+            .iter()
+            .filter(|b| b.kind == BlockKind::List)
+            .count();
+        assert!(
+            test_lists >= 1,
+            "TEST.md should have list blocks, got {test_lists}"
+        );
+        assert!(
+            ql_lists >= 5,
+            "QL_README should have many list blocks, got {ql_lists}"
+        );
     }
 
     #[test]
@@ -865,11 +924,17 @@ fn demo() {}
         let md = include_str!("../../examples/assets/QL_README.md");
         let html = markdown_source_to_html(md, ParseProfile::GitHubPreview);
         let fragment = HtmlFragment::from_html(&html);
-        fn find_todo_in_center(f: &HtmlFragment, id: crate::html::fragment::NodeId, in_center: bool) -> bool {
+        fn find_todo_in_center(
+            f: &HtmlFragment,
+            id: crate::html::fragment::NodeId,
+            in_center: bool,
+        ) -> bool {
             match f.node(id) {
                 Some(HtmlNode::Element { tag, children, .. }) => {
                     let in_center = in_center || tag.as_str() == "center";
-                    children.iter().any(|&c| find_todo_in_center(f, c, in_center))
+                    children
+                        .iter()
+                        .any(|&c| find_todo_in_center(f, c, in_center))
                 }
                 Some(HtmlNode::Text(t)) => in_center && t.contains("To-do"),
                 _ => false,
@@ -909,17 +974,14 @@ fn demo() {}
 
         eprintln!("blocks containing 'Normal': {matches:#?}");
         assert!(
-            matches
-                .iter()
-                .any(|(_, kind, align, source)| {
-                    *kind == BlockKind::Paragraph
-                        && *align == Some(BlockAlignment::Center)
-                        && source.contains("**bold**")
-                        && source.contains("`code`")
-                        && source.contains("[link]")
-                }),
-            "expected centered paragraph block for inline markdown inside <center>"
+            matches.iter().any(|(_, kind, align, source)| {
+                matches!(kind, BlockKind::Paragraph | BlockKind::HtmlBlock)
+                    && *align == Some(BlockAlignment::Center)
+                    && (source.contains("**bold**") || source.contains("<strong>bold</strong>"))
+                    && (source.contains("`code`") || source.contains("<code>code</code>"))
+                    && (source.contains("[link]") || source.contains(">link</a>"))
+            }),
+            "expected centered paragraph or coalesced HTML block for inline markdown inside <center>; got {matches:#?}"
         );
     }
-
 }

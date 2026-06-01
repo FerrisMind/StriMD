@@ -7,6 +7,12 @@ pub enum ParseProfile {
 }
 
 impl ParseProfile {
+    /// GFM extensions beyond strict CommonMark (tagfilter, extended autolinks).
+    #[must_use]
+    pub const fn uses_gfm_extensions(self) -> bool {
+        matches!(self, Self::GitHubPreview | Self::ChatStream)
+    }
+
     #[must_use]
     pub fn pulldown_options(self) -> pulldown_cmark::Options {
         match self {

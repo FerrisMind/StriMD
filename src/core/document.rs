@@ -60,7 +60,12 @@ impl Document {
     /// Export the document as HTML (requires `static` feature).
     #[cfg(feature = "static")]
     pub fn to_html(&self) -> Result<String, crate::core::error::RenderError> {
-        crate::html::writer::blocks_to_html(&self.blocks)
+        let html = crate::html::writer::blocks_to_html(&self.blocks)?;
+        Ok(if self.profile.uses_gfm_extensions() {
+            crate::html::tagfilter::apply_gfm_tagfilter(&html)
+        } else {
+            html
+        })
     }
 }
 
