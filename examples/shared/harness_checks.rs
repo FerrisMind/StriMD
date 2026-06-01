@@ -37,9 +37,7 @@ pub fn check_static_table_path() -> CheckResult {
         return Err("table blocks must use BlockContent::Markdown (shared pulldown path)".into());
     }
 
-    let html = doc
-        .to_html()
-        .map_err(|e| format!("to_html: {e}"))?;
+    let html = doc.to_html().map_err(|e| format!("to_html: {e}"))?;
     if !html.contains("<table") {
         return Err(format!("HTML export missing <table>, got: {html}"));
     }
@@ -73,9 +71,7 @@ pub fn check_stream_table_path() -> CheckResult {
         ));
     }
 
-    let has_table = chunked_doc
-        .blocks()
-        .any(|b| b.kind == BlockKind::Table)
+    let has_table = chunked_doc.blocks().any(|b| b.kind == BlockKind::Table)
         || chunked_doc
             .pending()
             .is_some_and(|p| p.kind == BlockKind::Table);

@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use strimd::{MarkState, MarkWidget};
 use iced::{
     Element, Length, Task,
     advanced::image::Handle,
     widget::{self, image, text_editor::Content},
 };
+use strimd::{MarkState, MarkWidget};
 
 use crate::image_loader::Image;
 
@@ -75,7 +75,10 @@ impl App {
     fn download_images(&mut self) -> Task<Message> {
         Task::batch(self.state.find_image_links().into_iter().map(|url| {
             if self.images_in_progress.insert(url.clone()) {
-                Task::perform(image_loader::download_image(url), Message::ImageDownloaded)
+                Task::perform(
+                    image_loader::download_image(url, Vec::new()),
+                    Message::ImageDownloaded,
+                )
             } else {
                 Task::none()
             }
@@ -109,7 +112,7 @@ impl App {
                             }
                             img.into()
                         } else {
-                            "...".into()
+                            widget::text(info.alt.unwrap_or(info.url).to_string()).into()
                         }
                     })
             )

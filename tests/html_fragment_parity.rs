@@ -2,11 +2,11 @@
 
 #![cfg(all(feature = "static", feature = "_rcdom_compat"))]
 
+use html5ever::{ParseOpts, QualName, local_name, ns, tendril::TendrilSink};
+use markup5ever_rcdom::RcDom;
 use strimd::HtmlFragment;
 use strimd::html::fragment::HtmlNode;
 use strimd::html::rcdom_compat;
-use html5ever::{local_name, ns, ParseOpts, QualName, tendril::TendrilSink};
-use markup5ever_rcdom::RcDom;
 
 const FIXTURES: &[&str] = &[
     "<details><summary>Title</summary><p>Body</p></details>",

@@ -6,9 +6,7 @@ pub mod ids;
 #[cfg(feature = "stream")]
 pub mod stream_document;
 
-pub use block::{
-    BlockContent, BlockKind, BlockStatus, CompiledMarkdown, RenderBlock,
-};
+pub use block::{BlockContent, BlockKind, BlockStatus, CompiledMarkdown, RenderBlock};
 pub use document::Document;
 #[cfg(feature = "static")]
 pub use document::markdown_to_html;

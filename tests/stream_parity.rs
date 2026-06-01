@@ -2,9 +2,7 @@
 
 #![cfg(feature = "stream")]
 
-use strimd::{
-    BlockContent, BlockKind, StreamDocument, StreamOptions, StreamPatch,
-};
+use strimd::{BlockContent, BlockKind, StreamDocument, StreamOptions, StreamPatch};
 
 fn chunk_string(s: &str, chunk_size: usize) -> Vec<String> {
     s.as_bytes()
@@ -44,9 +42,10 @@ fn code_fence_closure_across_chunks() {
         doc.append(&chunk);
     }
     assert!(
-        doc.blocks()
-            .any(|b| b.kind == BlockKind::CodeFence)
-            || doc.pending().is_some_and(|p| p.kind == BlockKind::CodeFence)
+        doc.blocks().any(|b| b.kind == BlockKind::CodeFence)
+            || doc
+                .pending()
+                .is_some_and(|p| p.kind == BlockKind::CodeFence)
     );
 }
 
@@ -58,7 +57,9 @@ fn footnote_definition_streaming_updates_state() {
     assert!(!update.reset);
     assert!(
         !update.invalidated.is_empty()
-            || doc.blocks().any(|b| b.kind == BlockKind::FootnoteDefinition)
+            || doc
+                .blocks()
+                .any(|b| b.kind == BlockKind::FootnoteDefinition)
             || matches!(update.patch, StreamPatch::AppendCommitted { .. }),
         "footnote definition should commit or invalidate prior content"
     );
@@ -82,5 +83,8 @@ fn long_stream_many_chunks_does_not_reset() {
 fn streamed_raw_html_matches_static_fragment_kind() {
     let mut doc = StreamDocument::new(StreamOptions::chat());
     doc.append(include_str!("fixtures/raw_details.md"));
-    assert!(doc.blocks().any(|b| matches!(b.content, BlockContent::Html(_))));
+    assert!(
+        doc.blocks()
+            .any(|b| matches!(b.content, BlockContent::Html(_)))
+    );
 }

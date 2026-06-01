@@ -4,9 +4,9 @@ use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
 use futures::StreamExt;
+use iced::Subscription;
 use iced::futures::SinkExt;
 use iced::stream;
-use iced::Subscription;
 use serde::Deserialize;
 
 use super::openai_compat::{ApiConfig, ChatMessage};
@@ -35,7 +35,11 @@ impl Hash for ActiveStream {
     fn hash<H: Hasher>(&self, state: &mut H) {
         std::mem::discriminant(self).hash(state);
         match self {
-            ActiveStream::Api { msg_id, config, messages } => {
+            ActiveStream::Api {
+                msg_id,
+                config,
+                messages,
+            } => {
                 msg_id.hash(state);
                 config.hash(state);
                 for m in messages {
@@ -70,35 +74,31 @@ pub fn stream_subscription(active: &Option<ActiveStream>) -> Subscription<ChatSt
 
 fn run_worker(active: &ActiveStream) -> impl iced::futures::Stream<Item = ChatStreamEvent> + use<> {
     let active = active.clone();
-    stream::channel(256, async move |mut output| {
-        match active {
-            ActiveStream::Api {
-                msg_id,
-                config,
-                messages,
-            } => match stream_api(&config, &messages, msg_id, &mut output).await {
-                Ok(()) => {
-                    let _ = output.send(ChatStreamEvent::Done { msg_id }).await;
-                }
-                Err(error) => {
-                    let _ = output
-                        .send(ChatStreamEvent::Error { msg_id, error })
-                        .await;
-                }
-            },
-            ActiveStream::Simulate { msg_id, chunks } => {
-                for chunk in chunks {
-                    tokio::time::sleep(Duration::from_millis(25)).await;
-                    if output
-                        .send(ChatStreamEvent::Delta { msg_id, chunk })
-                        .await
-                        .is_err()
-                    {
-                        return;
-                    }
-                }
+    stream::channel(256, async move |mut output| match active {
+        ActiveStream::Api {
+            msg_id,
+            config,
+            messages,
+        } => match stream_api(&config, &messages, msg_id, &mut output).await {
+            Ok(()) => {
                 let _ = output.send(ChatStreamEvent::Done { msg_id }).await;
             }
+            Err(error) => {
+                let _ = output.send(ChatStreamEvent::Error { msg_id, error }).await;
+            }
+        },
+        ActiveStream::Simulate { msg_id, chunks } => {
+            for chunk in chunks {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+                if output
+                    .send(ChatStreamEvent::Delta { msg_id, chunk })
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            let _ = output.send(ChatStreamEvent::Done { msg_id }).await;
         }
     })
 }

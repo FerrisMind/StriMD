@@ -1,13 +1,15 @@
 use std::{
     collections::{HashMap, HashSet},
+    env,
     fmt::Display,
+    path::PathBuf,
 };
 
-use strimd::{MarkState, MarkWidget, UpdateMsg};
 use iced::{
     Alignment, Element, Task,
     widget::{self, image, svg},
 };
+use strimd::{MarkState, MarkWidget, UpdateMsg};
 
 use crate::image_loader::Image;
 
@@ -15,12 +17,20 @@ use crate::image_loader::Image;
 mod image_loader;
 
 fn main() -> iced::Result {
+    let mut args = env::args().skip(1);
+    let initial_page = args
+        .next()
+        .as_deref()
+        .and_then(Page::from_arg)
+        .unwrap_or(Page::TestSuite);
+    let initial_marker = args.next();
     iced::application(
-        || {
-            let page = Page::TestSuite;
+        move || {
+            let page = initial_page;
             let mut app = App {
                 page,
-                state: MarkState::with_html_and_markdown(page.get_contents()),
+                section_marker: initial_marker.clone(),
+                state: MarkState::with_html_and_markdown(page.contents(initial_marker.as_deref())),
                 images_normal: HashMap::new(),
                 images_svg: HashMap::new(),
                 images_in_progress: HashSet::new(),
@@ -44,6 +54,7 @@ enum Message {
 
 struct App {
     page: Page,
+    section_marker: Option<String>,
     state: MarkState,
     images_normal: HashMap<String, RasterImage>,
     images_svg: HashMap<String, SvgImage>,
@@ -84,14 +95,13 @@ impl App {
                             },
                         );
                     } else {
-                        self.images_normal
-                            .insert(
-                                image.url,
-                                RasterImage {
-                                    handle: image::Handle::from_bytes(image.bytes),
-                                    intrinsic_size: image.intrinsic_size,
-                                },
-                            );
+                        self.images_normal.insert(
+                            image.url,
+                            RasterImage {
+                                handle: image::Handle::from_bytes(image.bytes),
+                                intrinsic_size: image.intrinsic_size,
+                            },
+                        );
                     }
                 }
                 Err(err) => {
@@ -126,7 +136,8 @@ impl App {
     }
 
     fn reload(&mut self) -> Task<Message> {
-        self.state = MarkState::with_html_and_markdown(self.page.get_contents());
+        self.state =
+            MarkState::with_html_and_markdown(self.page.contents(self.section_marker.as_deref()));
         self.download_images()
     }
 
@@ -176,14 +187,18 @@ impl App {
             }
             img.into()
         } else {
-            "...".into()
+            widget::text(missing_image_fallback(info)).into()
         }
     }
 
     fn download_images(&mut self) -> Task<Message> {
+        let roots = self.page.image_search_roots();
         Task::batch(self.state.find_image_links().into_iter().map(|url| {
             if self.images_in_progress.insert(url.clone()) {
-                Task::perform(image_loader::download_image(url), Message::ImageDownloaded)
+                Task::perform(
+                    image_loader::download_image(url, roots.clone()),
+                    Message::ImageDownloaded,
+                )
             } else {
                 Task::none()
             }
@@ -201,12 +216,42 @@ enum Page {
 impl Page {
     const ALL: [Self; 3] = [Self::TestSuite, Self::QuantumLauncher, Self::Mpf];
 
-    fn get_contents(&self) -> &'static str {
+    fn from_arg(arg: &str) -> Option<Self> {
+        match arg.to_ascii_lowercase().as_str() {
+            "test" | "testsuite" | "test-suite" => Some(Self::TestSuite),
+            "ql" | "quantumlauncher" | "quantum-launcher" => Some(Self::QuantumLauncher),
+            "mpf" => Some(Self::Mpf),
+            _ => None,
+        }
+    }
+
+    fn raw_contents(&self) -> &'static str {
         match self {
             Page::TestSuite => include_str!("assets/TEST.md"),
             Page::QuantumLauncher => include_str!("assets/QL_README.md"),
             Page::Mpf => include_str!("assets/MPF.md"),
         }
+    }
+
+    fn contents(&self, marker: Option<&str>) -> &str {
+        let source = self.raw_contents();
+        let Some(marker) = marker else {
+            return source;
+        };
+        source
+            .find(marker)
+            .map(|index| &source[index..])
+            .unwrap_or(source)
+    }
+
+    fn image_search_roots(&self) -> Vec<PathBuf> {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let asset_dir = manifest_dir.join("examples/assets");
+        let mut roots = vec![asset_dir, manifest_dir.clone()];
+        if let Some(parent) = manifest_dir.parent() {
+            roots.push(parent.to_path_buf());
+        }
+        roots
     }
 }
 
@@ -222,4 +267,12 @@ impl Display for Page {
             }
         )
     }
+}
+
+fn missing_image_fallback(info: strimd::ImageInfo<'_>) -> String {
+    let label = info
+        .alt
+        .filter(|alt| !alt.trim().is_empty())
+        .unwrap_or(info.url);
+    format!("[image unavailable: {label}]")
 }

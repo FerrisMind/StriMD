@@ -39,6 +39,7 @@ pub fn block_content_from_events(
     slice: &[Event<'static>],
     source: Arc<str>,
     raw_html: RawHtmlPolicy,
+    gfm_tagfilter: bool,
 ) -> BlockContent {
     if is_code_fence_slice(slice) {
         return BlockContent::Code {
@@ -49,7 +50,7 @@ pub fn block_content_from_events(
     if is_standalone_html_block(slice)
         && let Some(html) = extract_html_from_events(slice)
     {
-        return sanitize::block_content_from_raw_html(&html, raw_html);
+        return sanitize::block_content_from_raw_html(&html, raw_html, gfm_tagfilter);
     }
     BlockContent::Markdown(CompiledMarkdown::new(source, slice.to_vec()))
 }
@@ -60,25 +61,23 @@ fn is_standalone_html_block(slice: &[Event<'static>]) -> bool {
         return false;
     };
     match first {
-        Event::Start(Tag::HtmlBlock) | Event::Html(_) => {
-            !slice.iter().any(|event| {
-                matches!(
-                    event,
-                    Event::Start(Tag::Paragraph)
-                        | Event::Start(Tag::Heading { .. })
-                        | Event::Start(Tag::List(_))
-                        | Event::Start(Tag::BlockQuote(_))
-                        | Event::Start(Tag::Table(_))
-                        | Event::Start(Tag::CodeBlock(_))
-                        | Event::Start(Tag::FootnoteDefinition(_))
-                        | Event::Start(Tag::Item)
-                        | Event::Start(Tag::DefinitionList)
-                        | Event::Start(Tag::DefinitionListTitle)
-                        | Event::Start(Tag::DefinitionListDefinition)
-                        | Event::Start(Tag::MetadataBlock(_))
-                )
-            })
-        }
+        Event::Start(Tag::HtmlBlock) | Event::Html(_) => !slice.iter().any(|event| {
+            matches!(
+                event,
+                Event::Start(Tag::Paragraph)
+                    | Event::Start(Tag::Heading { .. })
+                    | Event::Start(Tag::List(_))
+                    | Event::Start(Tag::BlockQuote(_))
+                    | Event::Start(Tag::Table(_))
+                    | Event::Start(Tag::CodeBlock(_))
+                    | Event::Start(Tag::FootnoteDefinition(_))
+                    | Event::Start(Tag::Item)
+                    | Event::Start(Tag::DefinitionList)
+                    | Event::Start(Tag::DefinitionListTitle)
+                    | Event::Start(Tag::DefinitionListDefinition)
+                    | Event::Start(Tag::MetadataBlock(_))
+            )
+        }),
         _ => false,
     }
 }
@@ -110,8 +109,12 @@ pub fn events_contain_html(events: &[Event<'static>]) -> bool {
 
 /// Build HTML fragment content from raw source when no compiled events exist.
 #[cfg(feature = "stream")]
-pub fn html_block_content(source: Arc<str>, raw_html: RawHtmlPolicy) -> BlockContent {
-    sanitize::block_content_from_raw_html(&source, raw_html)
+pub fn html_block_content(
+    source: Arc<str>,
+    raw_html: RawHtmlPolicy,
+    gfm_tagfilter: bool,
+) -> BlockContent {
+    sanitize::block_content_from_raw_html(&source, raw_html, gfm_tagfilter)
 }
 
 #[cfg(test)]
@@ -131,6 +134,7 @@ mod tests {
             &events,
             Arc::from(source),
             crate::options::RawHtmlPolicy::Preserve,
+            true,
         );
         assert!(matches!(content, BlockContent::Html(_)));
     }
@@ -146,6 +150,7 @@ mod tests {
             &events,
             Arc::from(source),
             crate::options::RawHtmlPolicy::Preserve,
+            true,
         );
         let BlockContent::Html(fragment) = content else {
             panic!("expected html fragment");
@@ -153,9 +158,9 @@ mod tests {
         let html = {
             #[cfg(feature = "static")]
             {
-                use crate::html::writer;
                 use crate::core::block::{BlockKind, BlockStatus, RenderBlock};
                 use crate::core::ids::BlockId;
+                use crate::html::writer;
                 let block = RenderBlock {
                     id: BlockId::new(1),
                     status: BlockStatus::Committed,
@@ -183,6 +188,7 @@ mod tests {
             slice,
             Arc::from(text),
             crate::options::RawHtmlPolicy::Preserve,
+            true,
         );
         let BlockContent::Markdown(compiled) = content else {
             panic!("expected markdown block for readme sample, got {content:?}");
@@ -207,6 +213,7 @@ mod tests {
             &events,
             Arc::from(source),
             crate::options::RawHtmlPolicy::Preserve,
+            false,
         );
         assert!(matches!(content, BlockContent::Markdown(_)));
     }
@@ -221,6 +228,7 @@ mod tests {
             &events,
             Arc::from(source),
             crate::options::RawHtmlPolicy::Preserve,
+            true,
         );
         assert!(matches!(
             content,
@@ -242,6 +250,7 @@ mod tests {
             &events,
             Arc::from(source),
             crate::options::RawHtmlPolicy::Preserve,
+            true,
         );
         assert!(matches!(content, BlockContent::Html(_)));
     }

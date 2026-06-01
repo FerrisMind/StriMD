@@ -59,5 +59,8 @@ fn streamed_raw_html_uses_fragment_content() {
     for chunk in include_str!("fixtures/raw_details.md").as_bytes().chunks(8) {
         doc.append(std::str::from_utf8(chunk).unwrap_or(""));
     }
-    assert!(doc.blocks().any(|b| matches!(b.content, BlockContent::Html(_))));
+    assert!(
+        doc.blocks()
+            .any(|b| matches!(b.content, BlockContent::Html(_)))
+    );
 }

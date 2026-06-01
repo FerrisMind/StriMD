@@ -11,7 +11,8 @@ fn fixture(name: &str) -> String {
 
 #[test]
 fn gfm_tagfilter_example_657() {
-    let doc = Document::parse(&fixture("gfm_tagfilter.md"), ParseProfile::GitHubPreview).expect("parse");
+    let doc =
+        Document::parse(&fixture("gfm_tagfilter.md"), ParseProfile::GitHubPreview).expect("parse");
     let html = doc.to_html().expect("html");
     assert!(html.contains("&lt;title>"), "tagfilter title: {html}");
     assert!(html.contains("&lt;style>"), "tagfilter style: {html}");

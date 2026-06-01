@@ -10,21 +10,30 @@ const UNSAFE_TAGS: &[&str] = &[
 
 /// Build block content from raw HTML according to [`RawHtmlPolicy`].
 #[must_use]
-pub fn block_content_from_raw_html(html: &str, policy: RawHtmlPolicy) -> BlockContent {
+pub fn block_content_from_raw_html(
+    html: &str,
+    policy: RawHtmlPolicy,
+    gfm_tagfilter: bool,
+) -> BlockContent {
+    let html = if gfm_tagfilter {
+        crate::html::tagfilter::apply_gfm_tagfilter(html)
+    } else {
+        html.to_string()
+    };
     match policy {
-        RawHtmlPolicy::Preserve => BlockContent::Html(HtmlFragment::from_html(html)),
+        RawHtmlPolicy::Preserve => BlockContent::Html(HtmlFragment::from_html(&html)),
         RawHtmlPolicy::Escape => BlockContent::Unsupported {
             reason: UnsupportedReason::Policy(
                 "raw HTML escaped (use Preserve or StripUnsupported)".into(),
             ),
         },
         RawHtmlPolicy::StripUnsupported => {
-            if let Some(tag) = unsafe_tag_in_raw_html(html) {
+            if let Some(tag) = unsafe_tag_in_raw_html(&html) {
                 return BlockContent::Unsupported {
                     reason: UnsupportedReason::HtmlTag(tag),
                 };
             }
-            content_from_fragment(HtmlFragment::from_html(html))
+            content_from_fragment(HtmlFragment::from_html(&html))
         }
     }
 }
@@ -89,12 +98,14 @@ fn walk_for_unsafe(fragment: &HtmlFragment, id: NodeId) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::html::fragment::HtmlNode;
 
     #[test]
     fn preserve_keeps_details() {
         let content = block_content_from_raw_html(
             "<details><summary>x</summary></details>",
             RawHtmlPolicy::Preserve,
+            false,
         );
         assert!(matches!(content, BlockContent::Html(_)));
     }
@@ -104,6 +115,7 @@ mod tests {
         let content = block_content_from_raw_html(
             "<p>ok</p><script>alert(1)</script>",
             RawHtmlPolicy::StripUnsupported,
+            false,
         );
         assert!(matches!(
             content,
@@ -115,7 +127,7 @@ mod tests {
 
     #[test]
     fn escape_policy_does_not_emit_html_block() {
-        let content = block_content_from_raw_html("<span>x</span>", RawHtmlPolicy::Escape);
+        let content = block_content_from_raw_html("<span>x</span>", RawHtmlPolicy::Escape, false);
         assert!(matches!(content, BlockContent::Unsupported { .. }));
     }
 
@@ -124,7 +136,21 @@ mod tests {
         let content = block_content_from_raw_html(
             "<div><script>x</script></div>",
             RawHtmlPolicy::StripUnsupported,
+            false,
         );
         assert!(matches!(content, BlockContent::Unsupported { .. }));
+    }
+
+    #[test]
+    fn gfm_tagfilter_escapes_disallowed_raw_html() {
+        let content = block_content_from_raw_html("<xmp>bad</xmp>", RawHtmlPolicy::Preserve, true);
+        let BlockContent::Html(fragment) = content else {
+            panic!("expected html fragment");
+        };
+        assert_eq!(fragment.roots().len(), 1);
+        assert!(matches!(
+            fragment.node(fragment.roots()[0]),
+            Some(HtmlNode::Text(text)) if text.contains("<xmp>")
+        ));
     }
 }

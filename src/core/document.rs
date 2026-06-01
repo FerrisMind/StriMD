@@ -111,8 +111,8 @@ App {
 
     #[test]
     fn document_blocks_are_stable() {
-        let doc = Document::parse("# Hi\n\nParagraph.", ParseProfile::GitHubPreview)
-            .expect("parse");
+        let doc =
+            Document::parse("# Hi\n\nParagraph.", ParseProfile::GitHubPreview).expect("parse");
         let ids: Vec<_> = doc.blocks().iter().map(|b| b.id).collect();
         assert_eq!(ids.len(), doc.blocks().len());
         assert!(doc.blocks().iter().any(|b| b.kind == BlockKind::Heading));
@@ -158,12 +158,17 @@ App {
             &options,
         )
         .expect("parse");
-        assert!(doc.blocks().iter().any(|b| matches!(
-            b.content,
-            crate::core::block::BlockContent::Unsupported { .. }
-        )));
+        assert!(
+            doc.blocks().iter().any(|b| matches!(
+                b.content,
+                crate::core::block::BlockContent::Unsupported { .. }
+                    | crate::core::block::BlockContent::Html(_)
+            )),
+            "script input should degrade safely into non-live content"
+        );
         let html = doc.to_html().expect("html");
         assert!(!html.contains("<script"));
+        assert!(html.contains("&lt;script>") || html.contains("unsupported"));
     }
 
     #[cfg(feature = "static")]

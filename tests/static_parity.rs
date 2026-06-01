@@ -23,29 +23,43 @@ fn test_md_fixture_parses_multiple_block_kinds() {
         kinds.contains(&BlockKind::Heading) || html.contains("<h1"),
         "headings may live in coalesced HTML wrapper blocks; kinds={kinds:?}"
     );
-    assert!(kinds.iter().any(|k| matches!(k, BlockKind::HtmlBlock | BlockKind::Paragraph)));
+    assert!(
+        kinds
+            .iter()
+            .any(|k| matches!(k, BlockKind::HtmlBlock | BlockKind::Paragraph))
+    );
 }
 
 #[test]
 fn gfm_table_exports_table_markup() {
-    let doc = Document::parse(&fixture("gfm_table.md"), ParseProfile::GitHubPreview).expect("parse");
+    let doc =
+        Document::parse(&fixture("gfm_table.md"), ParseProfile::GitHubPreview).expect("parse");
     assert!(doc.blocks().iter().any(|b| b.kind == BlockKind::Table));
     let html = doc.to_html().expect("html");
     let norm = normalize_html(&html);
-    assert!(norm.contains("<table") || norm.contains("<tbody"), "html: {norm}");
+    assert!(
+        norm.contains("<table") || norm.contains("<tbody"),
+        "html: {norm}"
+    );
 }
 
 #[test]
 fn gfm_tasks_export_checkbox_markup() {
-    let doc = Document::parse(&fixture("gfm_tasks.md"), ParseProfile::GitHubPreview).expect("parse");
+    let doc =
+        Document::parse(&fixture("gfm_tasks.md"), ParseProfile::GitHubPreview).expect("parse");
     let html = doc.to_html().expect("html");
     assert!(html.contains("checkbox") || html.contains("task-list"));
 }
 
 #[test]
 fn raw_details_routes_to_html_fragment() {
-    let doc = Document::parse(&fixture("raw_details.md"), ParseProfile::GitHubPreview).expect("parse");
-    assert!(doc.blocks().iter().any(|b| matches!(b.content, BlockContent::Html(_))));
+    let doc =
+        Document::parse(&fixture("raw_details.md"), ParseProfile::GitHubPreview).expect("parse");
+    assert!(
+        doc.blocks()
+            .iter()
+            .any(|b| matches!(b.content, BlockContent::Html(_)))
+    );
     let html = doc.to_html().expect("html");
     assert!(html.contains("details"));
     assert!(
@@ -56,11 +70,35 @@ fn raw_details_routes_to_html_fragment() {
 
 #[test]
 fn gfm_wikilink_exports_via_pulldown() {
-    let doc = Document::parse(&fixture("gfm_wikilink.md"), ParseProfile::GitHubPreview).expect("parse");
+    let doc =
+        Document::parse(&fixture("gfm_wikilink.md"), ParseProfile::GitHubPreview).expect("parse");
     assert_eq!(doc.parse_backend(), strimd::ParseBackend::Pulldown);
     let html = doc.to_html().expect("html");
     assert!(
         html.contains("WikiPage") || html.contains("wiki"),
         "wikilink html: {html}"
     );
+}
+
+#[test]
+fn mpf_hidden_comments_stay_non_visible_html_comments() {
+    let source = include_str!("../examples/assets/MPF.md");
+    let doc = Document::parse(source, ParseProfile::GitHubPreview).expect("parse");
+    let html = doc.to_html().expect("html");
+    assert!(html.contains("<!-- TO DO: verify GitHub README HTML section in Nova preview -->"));
+    assert!(!html.contains("<p>&lt;!--"));
+}
+
+#[test]
+fn mpf_mixed_markdown_html_div_exports_as_single_html_wrapper() {
+    let source = include_str!("../examples/assets/MPF.md");
+    let doc = Document::parse(source, ParseProfile::GitHubPreview).expect("parse");
+    let html = doc.to_html().expect("html");
+    let start = html.find("Mixed markdown + HTML").expect("section heading");
+    let tail = &html[start..];
+    assert!(tail.contains("<div>"));
+    assert!(tail.contains("<strong>Markdown bold</strong>"));
+    assert!(tail.contains("<a href=\"https://github.github.io/gfm/\">markdown link</a>"));
+    assert!(tail.contains("<ul>"));
+    assert!(!tail.contains("&lt;div>"));
 }

@@ -30,9 +30,7 @@ compile_error!(
 );
 
 #[cfg(not(any(feature = "no_iced", feature = "_iced_backend")))]
-compile_error!(
-    "Select either the default iced backend or explicit headless mode via `no_iced`."
-);
+compile_error!("Select either the default iced backend or explicit headless mode via `no_iced`.");
 
 pub mod core;
 pub mod html;
@@ -63,8 +61,8 @@ pub use html::fragment::{HtmlAttr, HtmlFragment, HtmlNode, HtmlTag, NodeId};
 // Iced API (default builds)
 #[cfg(all(feature = "_iced_backend", not(feature = "no_iced")))]
 pub use backends::iced::{
-    ImageInfo, MarkState, MarkWidget, RubyMode, Style, UpdateMsg, DEFAULT_INLINE_CODE_BACKGROUND,
-    DEFAULT_INLINE_CODE_FOREGROUND,
+    DEFAULT_INLINE_CODE_BACKGROUND, DEFAULT_INLINE_CODE_FOREGROUND, ImageInfo, MarkState,
+    MarkWidget, RubyMode, Style, UpdateMsg,
 };
 
 #[cfg(all(

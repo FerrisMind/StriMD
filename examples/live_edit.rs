@@ -1,8 +1,8 @@
-use strimd::{MarkState, MarkWidget, UpdateMsg};
 use iced::{
     Element, Length, Task,
     widget::{self, text_editor::Content},
 };
+use strimd::{MarkState, MarkWidget, UpdateMsg};
 
 #[derive(Debug, Clone)]
 enum Message {

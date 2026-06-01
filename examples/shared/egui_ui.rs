@@ -3,9 +3,7 @@
 #![allow(dead_code)]
 
 use egui::{Color32, RichText, ScrollArea, Ui};
-use strimd::{
-    BlockKind, Document, RenderBlock, StreamDocument, StreamPatch, StreamUpdate,
-};
+use strimd::{BlockKind, Document, RenderBlock, StreamDocument, StreamPatch, StreamUpdate};
 
 pub fn status_banner(ui: &mut Ui, label: &str, ok: bool) {
     let (text, color) = if ok {
@@ -132,7 +130,10 @@ pub fn stream_fixture_by_words(text: &str, words_per_chunk: usize) -> Vec<String
         .collect()
 }
 
-pub fn append_stream_chunks(source: &str, chunk_size: usize) -> (StreamDocument, Vec<StreamUpdate>) {
+pub fn append_stream_chunks(
+    source: &str,
+    chunk_size: usize,
+) -> (StreamDocument, Vec<StreamUpdate>) {
     let mut doc = StreamDocument::new(strimd::StreamOptions::chat());
     let mut updates = Vec::new();
     for chunk in source.as_bytes().chunks(chunk_size) {

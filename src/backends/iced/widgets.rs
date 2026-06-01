@@ -19,8 +19,7 @@ where
     if let Some(f) = f {
         b = b.style(move |t, s| f(t, s));
     }
-    b
-        .width(Length::Shrink)
+    b.width(Length::Shrink)
 }
 
 pub fn link_text<'a, M: 'a, F>(

@@ -4,18 +4,18 @@
 //! cargo run --example llm_chat --features stream,iced/tokio
 //! ```
 
-use strimd::{BlockKind, MarkState, MarkWidget, StreamDocument, StreamOptions, Style, UpdateMsg};
 use iced::{
     Color, Element, Length, Subscription, Task,
     widget::{self, column, container, row, scrollable, text, text_input},
 };
+use strimd::{BlockKind, MarkState, MarkWidget, StreamDocument, StreamOptions, Style, UpdateMsg};
 
 #[path = "shared/chat_stream.rs"]
 mod chat_stream;
 #[path = "shared/openai_compat.rs"]
 mod openai_compat;
 
-use chat_stream::{chunk_by_words, stream_subscription, ActiveStream, ChatStreamEvent};
+use chat_stream::{ActiveStream, ChatStreamEvent, chunk_by_words, stream_subscription};
 use openai_compat::{ApiConfig, ChatMessage as ApiChatMessage};
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
@@ -177,14 +177,10 @@ impl App {
 
                         // #region agent log
                         let has_table = stream.blocks().any(|b| b.kind == BlockKind::Table)
-                            || stream
-                                .pending()
-                                .is_some_and(|p| p.kind == BlockKind::Table);
+                            || stream.pending().is_some_and(|p| p.kind == BlockKind::Table);
                         if has_table || message.plain_text.contains('|') {
-                            let kinds: Vec<String> = stream
-                                .blocks()
-                                .map(|b| format!("{:?}", b.kind))
-                                .collect();
+                            let kinds: Vec<String> =
+                                stream.blocks().map(|b| format!("{:?}", b.kind)).collect();
                             let pending = stream
                                 .pending()
                                 .map(|p| format!("{:?}", p.kind))
@@ -300,8 +296,7 @@ impl App {
                 text_input("Model", &self.model)
                     .on_input(Message::ModelChanged)
                     .padding(6),
-                text("Examples: OpenAI default; Ollama http://localhost:11434/v1")
-                    .size(12),
+                text("Examples: OpenAI default; Ollama http://localhost:11434/v1").size(12),
             ]
             .spacing(8)
             .padding(8)
@@ -329,8 +324,7 @@ impl App {
                 .on_submit(Message::Send)
                 .padding(8)
                 .width(Length::Fill),
-            widget::button("Send")
-                .on_press_maybe((!self.busy).then_some(Message::Send)),
+            widget::button("Send").on_press_maybe((!self.busy).then_some(Message::Send)),
             widget::button("Simulate TEST.md")
                 .on_press_maybe((!self.busy).then_some(Message::SimulateTestMd)),
         ]
@@ -365,14 +359,8 @@ impl App {
         };
 
         let (bg, fg) = match message.role {
-            MessageRole::User => (
-                Color::from_rgb(0.2, 0.45, 0.85),
-                Color::WHITE,
-            ),
-            MessageRole::Assistant => (
-                Color::from_rgb(0.18, 0.18, 0.2),
-                Color::WHITE,
-            ),
+            MessageRole::User => (Color::from_rgb(0.2, 0.45, 0.85), Color::WHITE),
+            MessageRole::Assistant => (Color::from_rgb(0.18, 0.18, 0.2), Color::WHITE),
         };
 
         let content: Element<'a, Message> = match message.role {

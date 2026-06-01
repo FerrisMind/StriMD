@@ -40,6 +40,7 @@ pub fn parse_blocks(
         events,
         ranges,
         options.raw_html,
+        options.gfm_tagfilter,
     ))
 }
 
@@ -48,6 +49,7 @@ fn group_events_into_blocks(
     events: Vec<Event<'static>>,
     ranges: Vec<Range<usize>>,
     raw_html: crate::options::RawHtmlPolicy,
+    gfm_tagfilter: bool,
 ) -> Vec<RenderBlock> {
     let source_arc = Arc::<str>::from(source);
     let mut blocks = Vec::new();
@@ -74,9 +76,9 @@ fn group_events_into_blocks(
             Arc::<str>::from(event_slice_source(source, range_slice))
         };
         let content = if let Some(html) = &coalesced_html {
-            sanitize::block_content_from_raw_html(html, raw_html)
+            sanitize::block_content_from_raw_html(html, raw_html, gfm_tagfilter)
         } else {
-            block_content_from_events(slice, block_source.clone(), raw_html)
+            block_content_from_events(slice, block_source.clone(), raw_html, gfm_tagfilter)
         };
         let kind = if coalesced {
             BlockKind::HtmlBlock

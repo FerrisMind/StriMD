@@ -191,7 +191,7 @@ fn find_state_dom(
     dropdown_counter: &mut usize,
 ) {
     if node.tag_name() == Some("details") {
-        dropdown_state.insert(*dropdown_counter, false);
+        dropdown_state.insert(*dropdown_counter, node.get_attr("open").is_some());
         *dropdown_counter += 1;
     }
     for child in node.children() {
@@ -208,5 +208,20 @@ fn find_image_links_dom(node: DomRef<'_>, storage: &mut HashSet<String>) {
     }
     for child in node.children() {
         find_image_links_dom(child, storage);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MarkState;
+
+    #[test]
+    fn details_open_attribute_initializes_dropdown_state() {
+        let state = MarkState::with_html_and_markdown(
+            "<details open><summary>Open</summary><p>x</p></details>\
+             <details><summary>Closed</summary><p>y</p></details>",
+        );
+        assert_eq!(state.dropdown_state.get(&0), Some(&true));
+        assert_eq!(state.dropdown_state.get(&1), Some(&false));
     }
 }

@@ -72,10 +72,10 @@ impl HtmlFragment {
         let html = html.as_ref();
         #[cfg(feature = "static")]
         {
-            if let Ok(fragment) = crate::html::treesink::parse_html_fragment(html)
-                && !fragment.roots().is_empty()
-            {
-                return fragment;
+            if let Ok(fragment) = crate::html::treesink::parse_html_fragment(html) {
+                if !fragment.roots().is_empty() || html.trim_start().starts_with("<!--") {
+                    return fragment;
+                }
             }
         }
         let mut fragment = Self::empty();
@@ -213,5 +213,15 @@ mod tests {
             Some(HtmlNode::Element { tag, .. }) => assert_eq!(tag.as_str(), "details"),
             other => panic!("expected element, got {other:?}"),
         }
+    }
+
+    #[cfg(feature = "static")]
+    #[test]
+    fn comment_only_html_does_not_fallback_to_text() {
+        let fragment = HtmlFragment::from_html("<!-- hidden -->");
+        assert!(matches!(
+            fragment.roots().first().and_then(|id| fragment.node(*id)),
+            Some(HtmlNode::Comment(_)) | None
+        ));
     }
 }

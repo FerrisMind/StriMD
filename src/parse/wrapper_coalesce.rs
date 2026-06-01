@@ -14,12 +14,12 @@ pub(crate) fn starts_unclosed_html_container(events: &[Event<'static>]) -> bool 
 struct ContainerState {
     details_depth: usize,
     center_depth: usize,
-    aligned_div_depth: usize,
+    div_depth: usize,
 }
 
 impl ContainerState {
     fn needs_more(self) -> bool {
-        self.details_depth > 0 || self.center_depth > 0 || self.aligned_div_depth > 0
+        self.details_depth > 0 || self.center_depth > 0 || self.div_depth > 0
     }
 
     fn scan_events(&mut self, events: &[Event<'static>]) {
@@ -51,10 +51,10 @@ impl ContainerState {
                 self.center_depth += 1;
             } else if is_close_tag(tag, "center") {
                 self.center_depth = self.center_depth.saturating_sub(1);
-            } else if is_align_center_div_open(tag) {
-                self.aligned_div_depth += 1;
+            } else if is_open_tag(tag, "div") {
+                self.div_depth += 1;
             } else if is_close_tag(tag, "div") {
-                self.aligned_div_depth = self.aligned_div_depth.saturating_sub(1);
+                self.div_depth = self.div_depth.saturating_sub(1);
             }
             i += tag_end + 1;
         }
@@ -167,19 +167,6 @@ fn is_close_tag(tag: &str, name: &str) -> bool {
         && tag_name_terminator(rest.as_bytes().get(name.len()).copied())
 }
 
-fn is_align_center_div_open(tag: &str) -> bool {
-    if !is_open_tag(tag, "div") {
-        return false;
-    }
-    let lower = tag.to_ascii_lowercase();
-    lower.contains("align=\"center\"")
-        || lower.contains("align='center'")
-        || lower.contains("align=\"centre\"")
-        || lower.contains("align='centre'")
-        || lower.contains("align=center")
-        || lower.contains("align=centre")
-}
-
 fn tag_name_terminator(next: Option<u8>) -> bool {
     matches!(
         next,
@@ -251,10 +238,10 @@ mod tests {
     }
 
     #[test]
-    fn aligned_div_open_is_tracked_without_rendering_full_slice() {
+    fn plain_div_open_is_tracked_without_rendering_full_slice() {
         let state = {
             let mut state = ContainerState::default();
-            state.scan_html("<div align=\"center\">");
+            state.scan_html("<div>");
             state
         };
         assert!(state.needs_more());

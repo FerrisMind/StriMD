@@ -22,7 +22,10 @@ fn rewrite_line(line: &str) -> String {
         }
         if let Some(scan) = scan_bare_email_candidate(line, i) {
             match scan {
-                EmailScan::Rewritten { consumed, replacement } => {
+                EmailScan::Rewritten {
+                    consumed,
+                    replacement,
+                } => {
                     out.push_str(&replacement);
                     i += consumed;
                     continue;
@@ -51,8 +54,13 @@ fn autolink_may_start(line: &str, start: usize) -> bool {
 }
 
 enum EmailScan {
-    Rewritten { consumed: usize, replacement: String },
-    Original { consumed: usize },
+    Rewritten {
+        consumed: usize,
+        replacement: String,
+    },
+    Original {
+        consumed: usize,
+    },
 }
 
 fn try_www_autolink(line: &str, start: usize) -> Option<(usize, String)> {

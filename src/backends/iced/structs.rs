@@ -1,10 +1,7 @@
 use std::{ops::Add, sync::Arc};
 
 use bitflags::bitflags;
-use iced::{
-    Element, Font,
-    widget,
-};
+use iced::{Element, Font, widget};
 
 use super::state::MarkState;
 
@@ -430,9 +427,7 @@ where
     // btw it supports clone so it's fine if we dont ref
     pub fn render(self) -> Element<'a, M, T> {
         match self {
-            RenderedSpan::Spans(spans) => widget::rich_text(spans)
-                .on_link_click(|url| url)
-                .into(),
+            RenderedSpan::Spans(spans) => widget::rich_text(spans).on_link_click(|url| url).into(),
             RenderedSpan::Elem(element, _) => element,
             RenderedSpan::None => widget::Column::new().into(),
         }
@@ -523,6 +518,7 @@ impl Emp {
 #[non_exhaustive]
 pub struct ImageInfo<'a> {
     pub url: &'a str,
+    pub alt: Option<&'a str>,
     pub width: Option<f32>,
     pub height: Option<f32>,
 }

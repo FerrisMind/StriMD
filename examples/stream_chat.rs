@@ -34,7 +34,10 @@ fn main() {
          pending replacements: {replace_pending}, has_table: {has_table}"
     );
     assert!(committed >= 1, "expected at least one committed block");
-    assert!(append_patches >= 1, "expected append patches during streaming");
+    assert!(
+        append_patches >= 1,
+        "expected append patches during streaming"
+    );
 }
 
 /// Simulate token/word deltas without collapsing newlines (required for GFM tables).

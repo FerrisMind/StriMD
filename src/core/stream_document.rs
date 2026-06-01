@@ -183,7 +183,12 @@ impl StreamDocument {
             else {
                 continue;
             };
-            let content = self.committed_content(source, events.to_vec(), kind);
+            let content = self.committed_content(
+                source,
+                events.to_vec(),
+                kind,
+                self.profile.uses_gfm_extensions(),
+            );
             if let Some(existing) = self.blocks.get_mut(index) {
                 existing.content = content;
             }
@@ -208,9 +213,7 @@ impl StreamDocument {
         } else if pending_changed {
             StreamPatch::ReplacePending
         } else if !invalidated.is_empty() {
-            StreamPatch::ReplaceCommitted {
-                id: invalidated[0],
-            }
+            StreamPatch::ReplaceCommitted { id: invalidated[0] }
         } else {
             StreamPatch::Noop
         };
@@ -232,10 +235,11 @@ impl StreamDocument {
         let source_text = block.display_or_raw();
         let source = Arc::<str>::from(source_text);
         let kind = mdstream_kind_to_strimd(block.kind);
+        let gfm_tagfilter = self.profile.uses_gfm_extensions();
         let content = if block.kind == mdstream::BlockKind::HtmlBlock {
-            html_block_content(source.clone(), self.raw_html)
+            html_block_content(source.clone(), self.raw_html, gfm_tagfilter)
         } else if let Some(events) = self.adapter.committed_events(block.id) {
-            self.committed_content(source.clone(), events.to_vec(), kind)
+            self.committed_content(source.clone(), events.to_vec(), kind, gfm_tagfilter)
         } else if block.kind == mdstream::BlockKind::CodeFence {
             BlockContent::Code {
                 lang: block.code_fence_language().map(str::to_string),
@@ -259,9 +263,10 @@ impl StreamDocument {
         source: Arc<str>,
         events: Vec<pulldown_cmark::Event<'static>>,
         kind: BlockKind,
+        gfm_tagfilter: bool,
     ) -> BlockContent {
         if kind == BlockKind::HtmlBlock || events_contain_html(&events) {
-            block_content_from_events(&events, source, self.raw_html)
+            block_content_from_events(&events, source, self.raw_html, gfm_tagfilter)
         } else {
             BlockContent::Markdown(CompiledMarkdown::new(source, events))
         }

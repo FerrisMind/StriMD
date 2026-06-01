@@ -87,8 +87,10 @@ mod tests {
     #[test]
     fn iced_markdown_items_include_code_block() {
         let items = iced_markdown_items_for_codeblock(Some("rust"), "fn main() {}\n");
-        assert!(items
-            .iter()
-            .any(|item| matches!(item, iced::widget::markdown::Item::CodeBlock { .. })));
+        assert!(
+            items
+                .iter()
+                .any(|item| matches!(item, iced::widget::markdown::Item::CodeBlock { .. }))
+        );
     }
 }

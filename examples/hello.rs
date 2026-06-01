@@ -1,5 +1,5 @@
-use strimd::{MarkState, MarkWidget};
 use iced::{Element, Task, widget};
+use strimd::{MarkState, MarkWidget};
 
 #[derive(Debug, Clone)]
 enum Message {}

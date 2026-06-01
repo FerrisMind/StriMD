@@ -1,4 +1,7 @@
-use std::sync::LazyLock;
+use std::{
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
 
 use reqwest::Client;
 
@@ -13,7 +16,14 @@ pub struct Image {
     pub intrinsic_size: Option<(f32, f32)>,
 }
 
-pub async fn download_image(url: String) -> Result<Image, String> {
+pub async fn download_image(url: String, search_roots: Vec<PathBuf>) -> Result<Image, String> {
+    if let Some(path) = resolve_local_path(&url, &search_roots) {
+        return load_local_image(url, path);
+    }
+    if !has_remote_scheme(&url) {
+        return Err(format!("local image not found: {url}"));
+    }
+
     static CLIENT: LazyLock<Client> = LazyLock::new(|| Client::new());
     let response = CLIENT
         .get(&url)
@@ -31,9 +41,7 @@ pub async fn download_image(url: String) -> Result<Image, String> {
             .to_vec();
         let mut is_svg = looks_like_svg(&bytes);
         let intrinsic_size = is_svg.then(|| svg_intrinsic_size(&bytes)).flatten();
-        if is_svg
-            && let Ok(rasterized) = rasterize_svg(&bytes)
-        {
+        if is_svg && let Ok(rasterized) = rasterize_svg(&bytes) {
             bytes = rasterized;
             is_svg = false;
         }
@@ -44,6 +52,43 @@ pub async fn download_image(url: String) -> Result<Image, String> {
             bytes,
         })
     }
+}
+
+fn load_local_image(url: String, path: PathBuf) -> Result<Image, String> {
+    let mut bytes = std::fs::read(&path)
+        .map_err(|err| format!("read local image {}: {err}", path.display()))?;
+    let mut is_svg = looks_like_svg(&bytes);
+    let intrinsic_size = is_svg.then(|| svg_intrinsic_size(&bytes)).flatten();
+    if is_svg && let Ok(rasterized) = rasterize_svg(&bytes) {
+        bytes = rasterized;
+        is_svg = false;
+    }
+    Ok(Image {
+        bytes,
+        url,
+        is_svg,
+        intrinsic_size,
+    })
+}
+
+fn resolve_local_path(url: &str, search_roots: &[PathBuf]) -> Option<PathBuf> {
+    if has_remote_scheme(url) {
+        return None;
+    }
+
+    let raw_path = Path::new(url);
+    if raw_path.is_absolute() && raw_path.exists() {
+        return Some(raw_path.to_path_buf());
+    }
+
+    search_roots
+        .iter()
+        .map(|root| root.join(raw_path))
+        .find(|candidate| candidate.exists())
+}
+
+fn has_remote_scheme(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://") || url.starts_with("data:")
 }
 
 fn looks_like_svg(bytes: &[u8]) -> bool {

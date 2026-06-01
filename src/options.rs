@@ -5,6 +5,7 @@ use crate::profile::ParseProfile;
 pub struct ParseOptions {
     pub pulldown: pulldown_cmark::Options,
     pub raw_html: RawHtmlPolicy,
+    pub gfm_tagfilter: bool,
 }
 
 impl Default for ParseOptions {
@@ -20,10 +21,12 @@ impl ParseOptions {
             ParseProfile::GitHubPreview | ParseProfile::ChatStream => Self {
                 pulldown: profile.pulldown_options(),
                 raw_html: RawHtmlPolicy::Preserve,
+                gfm_tagfilter: true,
             },
             ParseProfile::StrictCommonMark => Self {
                 pulldown: pulldown_cmark::Options::empty(),
                 raw_html: RawHtmlPolicy::Escape,
+                gfm_tagfilter: false,
             },
         }
     }
