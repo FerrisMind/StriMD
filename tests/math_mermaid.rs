@@ -2,8 +2,8 @@
 
 #![cfg(all(feature = "_iced_backend", feature = "math", feature = "mermaid"))]
 
-use strimd::{BlockContent, BlockKind, Document, MarkState, ParseProfile};
 use strimd::render::{latex_to_svg, mermaid_to_svg};
+use strimd::{BlockContent, BlockKind, Document, MarkState, ParseProfile};
 
 fn fixture(name: &str) -> String {
     std::fs::read_to_string(format!("tests/fixtures/{name}"))
@@ -26,8 +26,8 @@ fn mermaid_renders_svg() {
 
 #[test]
 fn document_math_display_block() {
-    let doc = Document::parse(&fixture("math_display.md"), ParseProfile::GitHubPreview)
-        .expect("parse");
+    let doc =
+        Document::parse(&fixture("math_display.md"), ParseProfile::GitHubPreview).expect("parse");
     assert!(
         doc.blocks()
             .iter()
@@ -38,8 +38,8 @@ fn document_math_display_block() {
 
 #[test]
 fn document_mermaid_fence_block() {
-    let doc = Document::parse(&fixture("mermaid_flow.md"), ParseProfile::GitHubPreview)
-        .expect("parse");
+    let doc =
+        Document::parse(&fixture("mermaid_flow.md"), ParseProfile::GitHubPreview).expect("parse");
     let block = doc
         .blocks()
         .iter()
@@ -68,7 +68,7 @@ fn mark_state_from_combined_fixtures() {
 
 #[test]
 fn mark_state_from_math_inline_fixture() {
-    let doc = Document::parse(&fixture("math_inline.md"), ParseProfile::GitHubPreview)
-        .expect("parse");
+    let doc =
+        Document::parse(&fixture("math_inline.md"), ParseProfile::GitHubPreview).expect("parse");
     let _state = MarkState::from_document(&doc);
 }

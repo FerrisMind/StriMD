@@ -11,7 +11,7 @@ pub mod mermaid;
 pub use svg_util::SvgArtifact;
 
 #[cfg(feature = "math")]
-pub use ratex::{latex_to_svg, LatexCache};
+pub use ratex::{LatexCache, latex_to_svg};
 
 #[cfg(feature = "mermaid")]
-pub use mermaid::{mermaid_to_svg, MermaidCache};
+pub use mermaid::{MermaidCache, mermaid_to_svg};

@@ -228,7 +228,10 @@ fn html_contains_tracked_wrapper(html: &str) -> bool {
 }
 
 fn tag_is_wrapped_in_backticks(bytes: &[u8], start: usize, tag_end: usize) -> bool {
-    let prev = start.checked_sub(1).and_then(|index| bytes.get(index)).copied();
+    let prev = start
+        .checked_sub(1)
+        .and_then(|index| bytes.get(index))
+        .copied();
     let next = bytes.get(start + tag_end + 1).copied();
     prev == Some(b'`') || next == Some(b'`')
 }
@@ -356,7 +359,10 @@ mod tests {
         let end = extend_through_unclosed_container(&events, 0, initial_end);
         let html = events_to_html(&events[..end]);
 
-        assert!(end < events.len(), "aligned div should stop before trailing blocks");
+        assert!(
+            end < events.len(),
+            "aligned div should stop before trailing blocks"
+        );
         assert!(!html.contains("After"));
     }
 
@@ -371,7 +377,10 @@ mod tests {
         let end = extend_through_unclosed_container(&events, 0, initial_end);
         let html = events_to_html(&events[..end]);
 
-        assert!(end < events.len(), "plain div should stop before trailing blocks");
+        assert!(
+            end < events.len(),
+            "plain div should stop before trailing blocks"
+        );
         assert!(html.contains("<div>"));
         assert!(html.contains("<strong>Markdown</strong>"));
         assert!(!html.contains("After"));

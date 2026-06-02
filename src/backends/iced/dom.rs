@@ -138,7 +138,6 @@ impl<'a> DomRef<'a> {
                 | "tfoot"
                 | "ul"
                 | "video"
-                | "br"
                 | "details"
                 | "summary"
                 | "center"
@@ -152,7 +151,10 @@ impl<'a> DomRef<'a> {
 
     #[must_use]
     pub(crate) fn direct_task_checkbox(&self) -> Option<DomRef<'a>> {
-        if let Some(node) = self.children_iter().find(|child| Self::is_task_checkbox(*child)) {
+        if let Some(node) = self
+            .children_iter()
+            .find(|child| Self::is_task_checkbox(*child))
+        {
             return Some(node);
         }
         for child in self.children_iter() {

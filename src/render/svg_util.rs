@@ -122,8 +122,14 @@ mod tests {
 
     #[test]
     fn fits_inside_box_without_upscaling() {
-        assert_eq!(svg_dimensions_to_fit(100.0, 50.0, 200.0, 200.0), (100.0, 50.0));
-        assert_eq!(svg_dimensions_to_fit(400.0, 200.0, 200.0, 100.0), (200.0, 100.0));
+        assert_eq!(
+            svg_dimensions_to_fit(100.0, 50.0, 200.0, 200.0),
+            (100.0, 50.0)
+        );
+        assert_eq!(
+            svg_dimensions_to_fit(400.0, 200.0, 200.0, 100.0),
+            (200.0, 100.0)
+        );
     }
 
     #[test]

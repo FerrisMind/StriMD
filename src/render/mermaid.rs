@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use mermaid_rs_renderer::{render_with_options, RenderOptions};
+use mermaid_rs_renderer::{RenderOptions, render_with_options};
 
 use crate::core::error::RenderError;
 use crate::render::svg_util::SvgArtifact;

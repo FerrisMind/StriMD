@@ -316,5 +316,4 @@ mod tests {
                 .any(|b| matches!(b.content, BlockContent::Html(_)))
         );
     }
-
 }

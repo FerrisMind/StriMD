@@ -1,6 +1,6 @@
 use iced::{
-    Background, Border, Color, Element, Font, Length, Rectangle, Size, advanced,
-    alignment, widget,
+    Background, Border, Color, Element, Font, Length, Padding, Rectangle, Size, Vector,
+    advanced, alignment, widget,
 };
 
 use super::structs::FStyleLinkButton;
@@ -88,11 +88,27 @@ pub fn kbd<'a, M: 'a, T: 'a>(label: impl Into<String>, style: KbdStyle) -> Eleme
     Element::new(KbdWidget::new(label.into(), style))
 }
 
+pub fn quote_block<'a, M: 'a, T: 'a, R: advanced::Renderer + 'a>(
+    content: impl Into<Element<'a, M, T, R>>,
+    color: Color,
+    bar_width: f32,
+    content_inset: f32,
+) -> Element<'a, M, T, R> {
+    Element::new(QuoteBlockWidget::new(
+        content.into(),
+        color,
+        bar_width,
+        content_inset,
+    ))
+}
+
 use iced::advanced::layout;
+use iced::advanced::overlay;
 use iced::advanced::renderer;
 use iced::advanced::text;
 use iced::advanced::widget::Tree;
-use iced::advanced::{Layout, Widget};
+use iced::advanced::{Clipboard, Layout, Shell, Widget};
+use iced::{Event, mouse};
 
 struct KbdWidget {
     label: String,
@@ -102,6 +118,29 @@ struct KbdWidget {
 impl KbdWidget {
     fn new(label: String, style: KbdStyle) -> Self {
         Self { label, style }
+    }
+}
+
+struct QuoteBlockWidget<'a, Message, Theme, Renderer> {
+    content: Element<'a, Message, Theme, Renderer>,
+    color: Color,
+    bar_width: f32,
+    content_inset: f32,
+}
+
+impl<'a, Message, Theme, Renderer> QuoteBlockWidget<'a, Message, Theme, Renderer> {
+    fn new(
+        content: Element<'a, Message, Theme, Renderer>,
+        color: Color,
+        bar_width: f32,
+        content_inset: f32,
+    ) -> Self {
+        Self {
+            content,
+            color,
+            bar_width,
+            content_inset,
+        }
     }
 }
 
@@ -186,5 +225,161 @@ where
 {
     fn from(widget: KbdWidget) -> Element<'a, Message, AppTheme, Renderer> {
         Element::new(widget)
+    }
+}
+
+impl<Message, AppTheme, Renderer> Widget<Message, AppTheme, Renderer>
+    for QuoteBlockWidget<'_, Message, AppTheme, Renderer>
+where
+    Renderer: renderer::Renderer,
+{
+    fn children(&self) -> Vec<Tree> {
+        vec![Tree::new(&self.content)]
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        tree.diff_children(std::slice::from_ref(&self.content));
+    }
+
+    fn size(&self) -> Size<Length> {
+        Size::new(Length::Fill, Length::Shrink)
+    }
+
+    fn layout(
+        &mut self,
+        tree: &mut Tree,
+        renderer: &Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        layout::positioned(
+            limits,
+            Length::Fill,
+            Length::Shrink,
+            Padding::default().left(self.content_inset),
+            |limits| {
+                self.content
+                    .as_widget_mut()
+                    .layout(&mut tree.children[0], renderer, limits)
+            },
+            |content, _| content,
+        )
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut Tree,
+        layout: Layout<'_>,
+        renderer: &Renderer,
+        operation: &mut dyn iced::advanced::widget::Operation,
+    ) {
+        if let Some(content_layout) = layout.children().next() {
+            self.content.as_widget_mut().operate(
+                &mut tree.children[0],
+                content_layout,
+                renderer,
+                operation,
+            );
+        }
+    }
+
+    fn update(
+        &mut self,
+        tree: &mut Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &Renderer,
+        clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        viewport: &Rectangle,
+    ) {
+        let Some(content_layout) = layout.children().next() else {
+            return;
+        };
+        self.content.as_widget_mut().update(
+            &mut tree.children[0],
+            event,
+            content_layout,
+            cursor,
+            renderer,
+            clipboard,
+            shell,
+            viewport,
+        )
+    }
+
+    fn mouse_interaction(
+        &self,
+        tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+        renderer: &Renderer,
+    ) -> mouse::Interaction {
+        let Some(content_layout) = layout.children().next() else {
+            return mouse::Interaction::None;
+        };
+        self.content.as_widget().mouse_interaction(
+            &tree.children[0],
+            content_layout,
+            cursor,
+            viewport,
+            renderer,
+        )
+    }
+
+    fn draw(
+        &self,
+        tree: &Tree,
+        renderer: &mut Renderer,
+        theme: &AppTheme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+    ) {
+        let bounds = layout.bounds();
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: Rectangle {
+                    x: bounds.x,
+                    y: bounds.y,
+                    width: self.bar_width,
+                    height: bounds.height,
+                },
+                ..renderer::Quad::default()
+            },
+            Background::Color(self.color),
+        );
+
+        if let Some(content_layout) = layout.children().next() {
+            self.content.as_widget().draw(
+                &tree.children[0],
+                renderer,
+                theme,
+                style,
+                content_layout,
+                cursor,
+                viewport,
+            );
+        }
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut Tree,
+        layout: Layout<'b>,
+        renderer: &Renderer,
+        viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<overlay::Element<'b, Message, AppTheme, Renderer>> {
+        let content_layout = layout.children().next()?;
+        self.content.as_widget_mut().overlay(
+            &mut tree.children[0],
+            content_layout,
+            renderer,
+            viewport,
+            translation,
+        )
     }
 }

@@ -654,7 +654,11 @@ mod tests {
 
         match cache.entry(cache.len() - 1) {
             Some(CachedBlock::Fragment(fragment)) => {
-                assert!(fragment_contains_tag(fragment, fragment.roots()[0], "strong"));
+                assert!(fragment_contains_tag(
+                    fragment,
+                    fragment.roots()[0],
+                    "strong"
+                ));
             }
             _ => panic!("expected parsed markdown fragment"),
         }

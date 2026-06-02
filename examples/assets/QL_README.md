@@ -45,7 +45,7 @@ It's designed to be simple and easy to use, with a focus on performance and feat
 
 ## Neatly package your mods into presets, and share it with your friends!
 
-![](https://github.com/Mrmayman/quantumlauncher/raw/main/assets/screenshots/presets.png)
+![](https://github.com/Mrmayman/quantumlauncher/raw/main/assets/screenshots/mod_manage.png)
 
 ## Built in themes!
 

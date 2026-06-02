@@ -210,21 +210,22 @@ impl App {
             "guide"
         };
 
-        let left_chip = widget::container(widget::text(left_text).size(11).color(iced::Color::WHITE))
-            .padding([2, 6])
-            .style(move |_| widget::container::Style {
-                background: Some(left.into()),
-                text_color: Some(iced::Color::WHITE),
-                border: iced::Border {
-                    radius: iced::border::top_left(4.0)
-                        .bottom_left(4.0)
-                        .top_right(0.0)
-                        .bottom_right(0.0),
-                    width: 0.0,
-                    color: iced::Color::TRANSPARENT,
-                },
-                ..widget::container::Style::default()
-            });
+        let left_chip =
+            widget::container(widget::text(left_text).size(11).color(iced::Color::WHITE))
+                .padding([2, 6])
+                .style(move |_| widget::container::Style {
+                    background: Some(left.into()),
+                    text_color: Some(iced::Color::WHITE),
+                    border: iced::Border {
+                        radius: iced::border::top_left(4.0)
+                            .bottom_left(4.0)
+                            .top_right(0.0)
+                            .bottom_right(0.0),
+                        width: 0.0,
+                        color: iced::Color::TRANSPARENT,
+                    },
+                    ..widget::container::Style::default()
+                });
         let right_chip =
             widget::container(widget::text(right_text).size(11).color(iced::Color::WHITE))
                 .padding([2, 6])

@@ -21,7 +21,7 @@ Image as <img src="https://github.com/Mrmayman/quantumlauncher/raw/main/assets/i
 
 - [Link that points to something](https://example.com)
 - [Link that doesn't point anywhere]()
-- Link with image: [![image](https://github.com/Mrmayman/quantumlauncher/raw/main/assets/icon/ql_logo.png)]()
+- Link with image: [![image](https://github.com/Mrmayman/quantumlauncher/raw/main/assets/icon/ql_logo.png)](https://example.com)
 
 > Block Quote.
 >

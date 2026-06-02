@@ -479,6 +479,7 @@ where
                 widget::row![r.render()]
                     .push(e.has_something().then_some(element))
                     .spacing(gap)
+                    .align_y(iced::Alignment::Center)
                     .wrap()
                     .into(),
                 Emp::NonEmpty,
@@ -489,6 +490,7 @@ where
                     .push(e.has_something().then_some(element))
                     .push(r.render())
                     .spacing(gap)
+                    .align_y(iced::Alignment::Center)
                     .wrap()
                     .into(),
                 Emp::NonEmpty,
@@ -499,6 +501,7 @@ where
                     .push(em1.has_something().then_some(e1))
                     .push(em2.has_something().then_some(e2))
                     .spacing(gap1.max(gap2))
+                    .align_y(iced::Alignment::Center)
                     .wrap()
                     .into(),
                 Emp::NonEmpty,

@@ -12,14 +12,23 @@ use super::{
         ChildAlignment, ChildData, ChildDataFlags, Emp, ImageInfo, MarkWidget, RenderedSpan,
         UpdateMsg, UpdateMsgKind,
     },
-    style::{DEFAULT_INLINE_CODE_BACKGROUND, DEFAULT_INLINE_CODE_FOREGROUND},
-    widgets::{KbdStyle, kbd, link, link_text, underline},
+    style::{
+        DEFAULT_INLINE_CODE_BACKGROUND, DEFAULT_INLINE_CODE_BORDER, DEFAULT_INLINE_CODE_FOREGROUND,
+    },
+    widgets::{KbdStyle, kbd, link, link_text, quote_block, underline},
 };
 use crate::html::block_cache::CachedCodeBlock;
 use crate::html::fragment::{HtmlFragment, HtmlNode};
 
 mod ruby;
 mod table;
+
+const VSCODE_INLINE_LINE_HEIGHT: f32 = 1.357;
+const VSCODE_INLINE_VERTICAL_PADDING: f32 = 1.0;
+const VSCODE_INLINE_HORIZONTAL_PADDING: f32 = 3.0;
+const VSCODE_INLINE_RADIUS: f32 = 4.0;
+const VSCODE_INLINE_OPTICAL_GAP: f32 = 1.0;
+const KBD_INLINE_OPTICAL_GAP: f32 = 0.5;
 
 // Add everything to one place
 pub trait ValidTheme:
@@ -95,8 +104,24 @@ where
                 clean_whitespace(&text)
             };
 
-            let mut t = widget::span(display).size(size);
-            return RenderedSpan::Spans(vec![{
+            let mut t: widget::text::Span<'a, M, Font> = widget::span(display).size(size);
+            let rendered = {
+                if data.flags.contains(ChildDataFlags::HIGHLIGHT) {
+                    t = t.line_height(VSCODE_INLINE_LINE_HEIGHT);
+                    let highlight_color = self
+                        .style
+                        .and_then(|n| n.highlight_color)
+                        .unwrap_or_else(|| iced::Color::from_rgb8(0xF7, 0xD8, 0x4B));
+                    t = t
+                        .background(highlight_color)
+                        .border(border::rounded(VSCODE_INLINE_RADIUS))
+                        .padding(Padding {
+                            top: VSCODE_INLINE_VERTICAL_PADDING,
+                            right: VSCODE_INLINE_HORIZONTAL_PADDING,
+                            bottom: VSCODE_INLINE_VERTICAL_PADDING,
+                            left: VSCODE_INLINE_HORIZONTAL_PADDING,
+                        });
+                }
                 t = t.font({
                     let mut f = self.font;
                     if data.flags.contains(ChildDataFlags::BOLD) {
@@ -113,18 +138,21 @@ where
                 if data.flags.contains(ChildDataFlags::UNDERLINE) {
                     t = t.underline(true);
                 }
-                if data.flags.contains(ChildDataFlags::HIGHLIGHT) {
-                    let highlight_color = self
-                        .style
-                        .and_then(|n| n.highlight_color)
-                        .unwrap_or_else(|| iced::Color::from_rgb8(0xF7, 0xD8, 0x4B));
-                    t = t.background(highlight_color);
-                }
                 if let Some(color) = self.style.and_then(|s| s.text_color) {
                     t = t.color(color);
                 }
                 t
-            }]);
+            };
+
+            if data.flags.contains(ChildDataFlags::HIGHLIGHT) {
+                return RenderedSpan::Elem(
+                    widget::rich_text([rendered]).into(),
+                    Emp::NonEmpty,
+                    VSCODE_INLINE_OPTICAL_GAP,
+                );
+            }
+
+            return RenderedSpan::Spans(vec![rendered]);
         }
 
         if let Some(name) = node.tag_name() {
@@ -201,7 +229,13 @@ where
                 if data.flags.contains(ChildDataFlags::INSIDE_RUBY) {
                     RenderedSpan::None
                 } else {
-                    widget::Column::new().into()
+                    RenderedSpan::Spans(vec![
+                        widget::span("\n").size(text_size_for_data(
+                            self.text_size,
+                            self.heading_scale,
+                            data.heading_weight,
+                        )),
+                    ])
                 }
             }
             "hr" => widget::rule::horizontal(1.0).into(),
@@ -330,34 +364,19 @@ where
                     ..self.font
                 });
 
-            let accent: widget::text::Span<'a, M, Font> = widget::span("▎")
-                .size(self.text_size * 2.2)
-                .color(alert.color());
-            let accent: Element<'a, M, T> = widget::rich_text([accent]).into();
-
-            widget::row![
-                widget::container(accent).padding(Padding::default().top(1)),
-                widget::column![
-                    widget::rich_text([icon, widget::span(" "), label]),
-                    content.render()
-                ]
-                    .spacing(4.0)
-                    .width(Length::Fill)
+            let body: Element<'a, M, T> = widget::column![
+                widget::rich_text([icon, widget::span(" "), label]),
+                content.render()
             ]
-            .spacing(2.0)
+            .spacing(4.0)
             .width(Length::Fill)
-            .into()
+            .into();
+
+            quote_block(body, alert.color(), 3.0, 11.0).into()
         } else {
             let quote_color = iced::Color::from_rgb8(0x6A, 0x73, 0x7D);
             let body = self.simple_quote_body(node, content, quote_color);
-            let accent: widget::text::Span<'a, M, Font> = widget::span("▎")
-                .size(self.text_size * 2.0)
-                .color(quote_color);
-            let accent: Element<'a, M, T> = widget::rich_text([accent]).into();
-            widget::row![accent, widget::container(body).width(Length::Fill)]
-                .spacing(1.0)
-                .width(Length::Fill)
-            .into()
+            quote_block(body, quote_color, 4.0, 12.0).into()
         }
     }
 
@@ -423,7 +442,11 @@ where
         Self::element_from_cached_svg_sized(svg, w, h)
     }
 
-    fn element_from_cached_svg_sized(svg: &CachedSvg, width: f32, height: f32) -> Element<'a, M, T> {
+    fn element_from_cached_svg_sized(
+        svg: &CachedSvg,
+        width: f32,
+        height: f32,
+    ) -> Element<'a, M, T> {
         let mut widget = widget::svg(svg.handle.clone());
         if width > 0.0 && height > 0.0 {
             widget = widget
@@ -445,7 +468,7 @@ where
                 text,
                 KbdStyle::size2(bg, fg, border, shadow, self.font_mono),
             );
-            return RenderedSpan::from(element).with_gap(4.0);
+            return RenderedSpan::from(element).with_gap(KBD_INLINE_OPTICAL_GAP);
         }
 
         self.render_children(node, data.insert(ChildDataFlags::MONOSPACE))
@@ -523,18 +546,40 @@ where
         content: RenderedSpan<'a, M, T>,
         color: iced::Color,
     ) -> Element<'a, M, T> {
-        if node
+        fn contains_direct_br(node: DomRef<'_>) -> bool {
+            node.children_iter().any(|child| {
+                child.tag_name() == Some("br")
+                    || child
+                        .children_iter()
+                        .any(|grandchild| grandchild.tag_name() == Some("br"))
+            })
+        }
+
+        let meaningful_children = node
             .children_iter()
-            .all(|child| child.is_useless() || matches!(child.tag_name(), Some("p" | "br")))
+            .filter(|child| !child.is_useless())
+            .collect::<Vec<_>>();
+
+        if meaningful_children.len() == 1
+            && meaningful_children[0].tag_name() == Some("p")
+            && !contains_direct_br(meaningful_children[0])
         {
             let text = clean_whitespace(&node.accumulated_text());
             let span: widget::text::Span<'a, M, Font> = widget::span(text).color(color);
-            return widget::rich_text([span]).into();
+            return widget::container(widget::rich_text([span]))
+                .width(Length::Fill)
+                .into();
         }
 
-        self.tint_rendered_span(content, color).render()
+        match self.tint_rendered_span(content, color) {
+            RenderedSpan::Spans(spans) => {
+                widget::container(widget::rich_text(spans).on_link_click(|url| url))
+                    .width(Length::Fill)
+                    .into()
+            }
+            other => widget::container(other.render()).width(Length::Fill).into(),
+        }
     }
-
     fn get_summary_elements(
         &mut self,
         node: DomRef<'_>,
@@ -945,7 +990,9 @@ where
     }
 
     fn render_pre_block(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
-        if let Some(code_node) = node.children_iter().find(|child| child.tag_name() == Some("code"))
+        if let Some(code_node) = node
+            .children_iter()
+            .find(|child| child.tag_name() == Some("code"))
         {
             let text = code_node.accumulated_text();
             if !text.trim().is_empty() {
@@ -985,17 +1032,15 @@ where
         } else {
             None
         });
+        let inline_border = inline_background.map(|_| DEFAULT_INLINE_CODE_BORDER);
         let inline_color = style.and_then(|s| s.inline_code_color);
         let text_color = style.and_then(|s| s.text_color);
 
         if inline {
-            const INLINE_CODE_TOP_PAD: f32 = 1.0;
-            const INLINE_CODE_BOTTOM_PAD: f32 = 1.0;
-            const INLINE_CODE_H_PAD: f32 = 4.0;
-            let mut code_span = widget::span(code)
+            let mut code_span: widget::text::Span<'a, M, Font> = widget::span(code)
                 .size(size)
                 .font(self.font_mono)
-                .line_height(Pixels(size + INLINE_CODE_TOP_PAD + INLINE_CODE_BOTTOM_PAD));
+                .line_height(VSCODE_INLINE_LINE_HEIGHT);
 
             if let Some(color) = inline_color.or(text_color) {
                 code_span = code_span.color(color);
@@ -1003,17 +1048,23 @@ where
             if let Some(background) = inline_background {
                 code_span = code_span
                     .background(background)
-                    .border(border::rounded(4.0))
+                    .border(
+                        border::rounded(VSCODE_INLINE_RADIUS)
+                            .width(1.0)
+                            .color(inline_border.unwrap_or(DEFAULT_INLINE_CODE_BORDER)),
+                    )
                     .padding(Padding {
-                        top: INLINE_CODE_TOP_PAD,
-                        right: INLINE_CODE_H_PAD,
-                        bottom: INLINE_CODE_BOTTOM_PAD,
-                        left: INLINE_CODE_H_PAD,
+                        top: VSCODE_INLINE_VERTICAL_PADDING,
+                        right: VSCODE_INLINE_HORIZONTAL_PADDING,
+                        bottom: VSCODE_INLINE_VERTICAL_PADDING,
+                        left: VSCODE_INLINE_HORIZONTAL_PADDING,
                     });
             }
-
-            let gap = widget::span("\u{2009}").size(size);
-            RenderedSpan::Spans(vec![gap.clone(), code_span, gap])
+            RenderedSpan::Elem(
+                widget::rich_text([code_span]).into(),
+                Emp::NonEmpty,
+                VSCODE_INLINE_OPTICAL_GAP,
+            )
         } else {
             let mut span = widget::span(code)
                 .size(size)
@@ -1177,8 +1228,9 @@ where
                                     },
                                 ));
                             } else {
-                                row = row.push(
-                                    self.with_block_context(cache.block_id(index), |this| {
+                                row = row.push(self.with_block_context(
+                                    cache.block_id(index),
+                                    |this| {
                                         this.render_fragment_roots(
                                             f,
                                             child_data_for_block_alignment(
@@ -1186,8 +1238,8 @@ where
                                             ),
                                         )
                                         .render()
-                                    }),
-                                );
+                                    },
+                                ));
                             }
                             index += 1;
                         }
@@ -1338,9 +1390,14 @@ where
                 background: inline_code_bg
                     .unwrap_or(DEFAULT_INLINE_CODE_BACKGROUND)
                     .into(),
-                border: border::rounded(4.0),
+                border: border::rounded(VSCODE_INLINE_RADIUS)
+                    .width(1.0)
+                    .color(DEFAULT_INLINE_CODE_BORDER),
             },
-            inline_code_padding: padding::left(3).right(3).top(1).bottom(1),
+            inline_code_padding: padding::left(VSCODE_INLINE_HORIZONTAL_PADDING)
+                .right(VSCODE_INLINE_HORIZONTAL_PADDING)
+                .top(VSCODE_INLINE_VERTICAL_PADDING)
+                .bottom(VSCODE_INLINE_VERTICAL_PADDING),
             inline_code_color: inline_code_color.unwrap_or(DEFAULT_INLINE_CODE_FOREGROUND),
             inline_code_font: self.font_mono,
             code_block_font: self.font_mono,
@@ -1585,7 +1642,43 @@ mod render_tests {
         let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
         let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
         let debug = format!("{rendered:?}");
-        assert!(debug.contains("\" \""), "expected preserved space, got: {debug}");
+        assert!(
+            debug.contains("\" \""),
+            "expected preserved space, got: {debug}"
+        );
+    }
+
+    #[test]
+    fn hard_break_inside_paragraph_stays_newline() {
+        let fragment = HtmlFragment::from_html("<p>Line 1<br>Line 2</p>");
+        let state = MarkState::from_blocks(&[]);
+        let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
+        let paragraph = DomRef::fragment_roots(&fragment)[0];
+        let rendered = widget.render_children(paragraph, ChildData::default());
+        let debug = format!("{rendered:?}");
+        assert!(
+            debug.contains("\\n"),
+            "expected hard break to survive as newline, got: {debug}"
+        );
+    }
+
+    #[test]
+    fn blockquote_with_multiple_paragraphs_does_not_collapse_to_one_line() {
+        let fragment = HtmlFragment::from_html(
+            "<blockquote><p>The problem with being faster than light</p><p>is that you live in darkness</p></blockquote>",
+        );
+        let state = MarkState::from_blocks(&[]);
+        let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
+        let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
+        let debug = format!("{rendered:?}");
+        assert!(
+            !debug.contains("The problem with being faster than light is that you live in darkness"),
+            "expected separate paragraph blocks inside blockquote, got: {debug}"
+        );
+        assert!(
+            matches!(rendered, RenderedSpan::Elem(_, _, _)),
+            "expected blockquote with multiple paragraphs to stay block-rendered, got: {debug}"
+        );
     }
 
     #[test]
@@ -1617,8 +1710,8 @@ mod render_tests {
         eprintln!("paragraph child tags: {child_tags:?}");
         eprintln!("paragraph debug: {debug}");
         assert!(
-            matches!(rendered, RenderedSpan::Spans(_)),
-            "expected inline paragraph to stay spans, got {debug}"
+            !rendered.is_empty(),
+            "expected inline paragraph to render content, got {debug}"
         );
     }
 
@@ -1648,6 +1741,23 @@ mod render_tests {
             "unexpected placeholder: {scripts_debug}"
         );
         assert!(matches!(scripts, RenderedSpan::Elem(_, _, _)));
+    }
+
+    #[test]
+    fn inline_code_keeps_optical_gap_from_neighbor_punctuation() {
+        let fragment = HtmlFragment::from_html("<p>Alpha <code>beta</code>, gamma.</p>");
+        let state = MarkState::from_blocks(&[]);
+        let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
+        let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
+        let debug = format!("{rendered:?}");
+        assert!(
+            debug.contains(","),
+            "expected punctuation to remain outside code: {debug}"
+        );
+        assert!(
+            matches!(rendered, RenderedSpan::Elem(_, _, gap) if gap > 0.0),
+            "expected inline code to keep a non-zero optical gap, got {debug}"
+        );
     }
 
     #[test]
@@ -1688,6 +1798,46 @@ mod render_tests {
     }
 
     #[test]
+    fn markdown_linked_image_renders_as_button_wrapped_element() {
+        use crate::{Document, ParseProfile};
+
+        let doc = Document::parse(
+            "[![image](https://example.com/image.png)](https://example.com)",
+            ParseProfile::GitHubPreview,
+        )
+        .expect("parse");
+        let state = MarkState::from_document(&doc);
+        let cache = state.cache.as_ref().expect("block cache");
+        let fragment = match cache.entry(0) {
+            Some(CachedBlock::Fragment(fragment)) => fragment.clone(),
+            _ => panic!("expected markdown fragment block"),
+        };
+
+        let mut widget = MarkWidget::<String, iced::Theme>::new(&state)
+            .on_clicking_link(|url| url)
+            .on_drawing_image(|info| widget::text(info.alt.unwrap_or(info.url).to_string()).into());
+        let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
+        assert!(
+            matches!(rendered, RenderedSpan::Elem(_, _, _)),
+            "expected markdown linked image to render as clickable element"
+        );
+    }
+
+    #[test]
+    fn nested_blockquote_with_block_children_renders_as_element() {
+        let fragment = HtmlFragment::from_html(
+            "<blockquote><p>Block Quote.</p><ul><li>Point 1</li><li>Point 2</li></ul><blockquote><p>Nested Block Quote</p><pre><code>#include &lt;cstdio&gt;\nint main() {}</code></pre></blockquote></blockquote>",
+        );
+        let state = MarkState::from_blocks(&[]);
+        let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
+        let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
+        assert!(
+            matches!(rendered, RenderedSpan::Elem(_, _, _)),
+            "expected nested blockquote with block content to render as element"
+        );
+    }
+
+    #[test]
     fn github_alert_class_maps_to_alert_kind() {
         assert_eq!(
             github_alert_kind(Some("markdown-alert markdown-alert-note")),
@@ -1714,16 +1864,30 @@ mod render_tests {
         );
     }
 
+    #[test]
+    fn kbd_keeps_small_optical_gap_from_neighbor_punctuation() {
+        let fragment = HtmlFragment::from_html("<p><kbd>Ctrl</kbd>, highlight.</p>");
+        let state = MarkState::from_blocks(&[]);
+        let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
+        let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
+        let debug = format!("{rendered:?}");
+        assert!(
+            debug.contains(","),
+            "expected punctuation to remain outside kbd: {debug}"
+        );
+        assert!(
+            matches!(rendered, RenderedSpan::Elem(_, _, gap) if (gap - KBD_INLINE_OPTICAL_GAP).abs() < f32::EPSILON),
+            "expected kbd to use the inline optical gap, got {debug}"
+        );
+    }
+
     #[cfg(feature = "math")]
     #[test]
     fn inline_math_span_renders_as_svg_widget() {
         use crate::{Document, ParseProfile};
 
-        let doc = Document::parse(
-            "Energy $E = mc^2$ here.",
-            ParseProfile::GitHubPreview,
-        )
-        .expect("parse");
+        let doc =
+            Document::parse("Energy $E = mc^2$ here.", ParseProfile::GitHubPreview).expect("parse");
         let state = MarkState::from_document(&doc);
         let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
         let cache = state.cache.as_ref().expect("block cache");

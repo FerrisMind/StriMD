@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use ratex_layout::{layout, to_display_list, LayoutOptions};
+use ratex_layout::{LayoutOptions, layout, to_display_list};
 use ratex_parser::parser::parse;
-use ratex_svg::{render_to_svg, SvgOptions};
+use ratex_svg::{SvgOptions, render_to_svg};
 
 use crate::core::error::RenderError;
 use crate::render::svg_util::SvgArtifact;
@@ -30,11 +30,7 @@ impl LatexCache {
         Self::default()
     }
 
-    pub fn render(
-        &mut self,
-        latex: &str,
-        display: bool,
-    ) -> Result<Arc<SvgArtifact>, RenderError> {
+    pub fn render(&mut self, latex: &str, display: bool) -> Result<Arc<SvgArtifact>, RenderError> {
         let key = CacheKey {
             latex: Arc::from(latex),
             display,

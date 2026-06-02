@@ -112,7 +112,8 @@ mod tests {
 
     #[test]
     fn ruby_units_render_without_extra_inline_gap() {
-        let fragment = HtmlFragment::from_html("<p><ruby>東<rt>とう</rt>京<rt>きょう</rt></ruby></p>");
+        let fragment =
+            HtmlFragment::from_html("<p><ruby>東<rt>とう</rt>京<rt>きょう</rt></ruby></p>");
         let state = crate::backends::iced::MarkState::from_blocks(&[]);
         let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
         let paragraph = crate::backends::iced::dom::DomRef::fragment_roots(&fragment)[0];

@@ -256,7 +256,10 @@ impl StreamDocument {
         } else if block.kind == mdstream::BlockKind::CodeFence {
             let lang = block.code_fence_language().map(str::to_string);
             #[cfg(feature = "mermaid")]
-            if lang.as_deref().is_some_and(crate::parse::content::is_mermaid_lang) {
+            if lang
+                .as_deref()
+                .is_some_and(crate::parse::content::is_mermaid_lang)
+            {
                 BlockContent::Mermaid {
                     source: Arc::from(code_text_from_stream_block(block)),
                     complete: status == BlockStatus::Committed,

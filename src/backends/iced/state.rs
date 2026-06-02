@@ -225,6 +225,7 @@ impl MarkState {
         self.dropdown_blocks.insert(block_id, refreshed);
     }
 
+    #[cfg(feature = "stream")]
     fn remove_dropdown_block(&mut self, block_id: BlockId) {
         let Some(entries) = self.dropdown_blocks.remove(&block_id) else {
             return;
