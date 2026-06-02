@@ -42,12 +42,15 @@ mermaid-rs-renderer = { path = "../mermaid-rs-renderer", default-features = fals
 
 [dev-dependencies]
 open = "5"
+rfd = "0.17.2"
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 reqwest = { version = "0.13", features = ["json", "stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 futures = "0.3"
 resvg = "0.45"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 eframe = { version = "0.29", default-features = false, features = [
     "default_fonts",
     "glow",
@@ -57,7 +60,7 @@ eframe = { version = "0.29", default-features = false, features = [
 egui = "0.29"
 
 [features]
-default = ["_iced_backend"]
+default = ["_iced_backend", "stream", "iced/image", "iced/tokio"]
 
 # Supported public features (stable contract)
 no_iced = []
@@ -110,7 +113,7 @@ required-features = ["_iced_backend", "iced/image", "iced/tokio"]
 
 [[example]]
 name = "large_readme"
-required-features = ["_iced_backend", "iced/image", "iced/tokio", "iced/svg"]
+required-features = ["_iced_backend", "iced/image", "iced/tokio"]
 
 [[example]]
 name = "static_export"
@@ -134,4 +137,4 @@ required-features = ["_iced_backend", "stream", "iced/tokio"]
 
 [[example]]
 name = "math_mermaid"
-required-features = ["_iced_backend", "math", "mermaid"]
+required-features = ["_iced_backend"]

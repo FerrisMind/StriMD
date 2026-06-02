@@ -34,17 +34,13 @@ pub async fn download_image(url: String, search_roots: Vec<PathBuf>) -> Result<I
     if !response.status().is_success() {
         Err(format!("Error {} from url: {url}", response.status()))
     } else {
-        let mut bytes = response
+        let bytes = response
             .bytes()
             .await
             .map_err(|err| err.to_string())?
             .to_vec();
-        let mut is_svg = looks_like_svg(&bytes);
+        let is_svg = looks_like_svg(&bytes);
         let intrinsic_size = is_svg.then(|| svg_intrinsic_size(&bytes)).flatten();
-        if is_svg && let Ok(rasterized) = rasterize_svg(&bytes) {
-            bytes = rasterized;
-            is_svg = false;
-        }
         Ok(Image {
             intrinsic_size,
             is_svg,
@@ -55,14 +51,10 @@ pub async fn download_image(url: String, search_roots: Vec<PathBuf>) -> Result<I
 }
 
 fn load_local_image(url: String, path: PathBuf) -> Result<Image, String> {
-    let mut bytes = std::fs::read(&path)
+    let bytes = std::fs::read(&path)
         .map_err(|err| format!("read local image {}: {err}", path.display()))?;
-    let mut is_svg = looks_like_svg(&bytes);
+    let is_svg = looks_like_svg(&bytes);
     let intrinsic_size = is_svg.then(|| svg_intrinsic_size(&bytes)).flatten();
-    if is_svg && let Ok(rasterized) = rasterize_svg(&bytes) {
-        bytes = rasterized;
-        is_svg = false;
-    }
     Ok(Image {
         bytes,
         url,
@@ -156,21 +148,4 @@ fn parse_view_box(value: &str) -> Option<(f32, f32)> {
     let width: f32 = parts.next()?.parse().ok()?;
     let height: f32 = parts.next()?.parse().ok()?;
     Some((width, height))
-}
-
-fn rasterize_svg(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let options = resvg::usvg::Options::default();
-    let tree = resvg::usvg::Tree::from_data(bytes, &options)
-        .map_err(|err| format!("svg parse failed: {err}"))?;
-    let size = tree.size().to_int_size();
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(size.width(), size.height())
-        .ok_or_else(|| "svg pixmap allocation failed".to_string())?;
-    resvg::render(
-        &tree,
-        resvg::tiny_skia::Transform::default(),
-        &mut pixmap.as_mut(),
-    );
-    pixmap
-        .encode_png()
-        .map_err(|err| format!("svg png encode failed: {err}"))
 }

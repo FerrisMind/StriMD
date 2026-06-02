@@ -1,7 +1,7 @@
 //! Demo: RaTeX math (inline + display) and Mermaid diagrams in MarkWidget.
 //!
 //! ```sh
-//! cargo run --example math_mermaid --features "_iced_backend,math,mermaid"
+//! cargo run --example math_mermaid
 //! ```
 
 use iced::{Element, Task, widget};

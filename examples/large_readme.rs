@@ -2,13 +2,13 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     fmt::Display,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
 };
 
 use iced::{
     Alignment, Element, Task,
-    widget::{self, image, svg},
+    widget::{self, button, image, svg},
 };
 use strimd::{MarkState, MarkWidget, UpdateMsg};
 
@@ -31,10 +31,12 @@ fn main() -> iced::Result {
             let mut app = App {
                 page,
                 section_marker: initial_marker.clone(),
+                custom_source: None,
                 state: MarkState::with_html_and_markdown(page.contents(initial_marker.as_deref())),
                 images_normal: HashMap::new(),
                 images_svg: HashMap::new(),
                 images_in_progress: HashSet::new(),
+                source_generation: 0,
             };
             let t = app.download_images();
             (app, t)
@@ -50,16 +52,23 @@ enum Message {
     UpdateState(UpdateMsg),
     OpenLink(String),
     ChangePage(Page),
-    ImageDownloaded(Result<Image, String>),
+    OpenLocalFile,
+    LocalFilePicked(Option<Result<(PathBuf, String), String>>),
+    ImageDownloaded {
+        generation: u64,
+        result: Result<Image, String>,
+    },
 }
 
 struct App {
     page: Page,
     section_marker: Option<String>,
+    custom_source: Option<(PathBuf, String)>,
     state: MarkState,
     images_normal: HashMap<String, RasterImage>,
     images_svg: HashMap<String, SvgImage>,
     images_in_progress: HashSet<String>,
+    source_generation: u64,
 }
 
 #[derive(Clone)]
@@ -79,41 +88,85 @@ impl App {
         match msg {
             Message::UpdateState(msg) => self.state.update(msg),
             Message::OpenLink(link) => {
-                _ = open_link(&link);
+                _ = open_link(&link, self.link_base_dir());
             }
             Message::ChangePage(page) => {
                 self.page = page;
+                self.custom_source = None;
                 return self.reload();
             }
-            Message::ImageDownloaded(res) => match res {
-                Ok(image) => {
-                    if image.is_svg {
-                        self.images_svg.insert(
-                            image.url,
-                            SvgImage {
-                                handle: svg::Handle::from_memory(image.bytes),
-                                intrinsic_size: image.intrinsic_size,
-                            },
-                        );
-                    } else {
-                        self.images_normal.insert(
-                            image.url,
-                            RasterImage {
-                                handle: image::Handle::from_bytes(image.bytes),
-                                intrinsic_size: image.intrinsic_size,
-                            },
-                        );
+            Message::OpenLocalFile => {
+                return Task::perform(
+                    async {
+                        let picked = rfd::FileDialog::new()
+                            .set_title("Open a local markdown file")
+                            .add_filter("Text", &["md", "markdown", "txt", "html", "htm"])
+                            .pick_file();
+
+                        match picked {
+                            Some(path) => {
+                                let path_display = path.display().to_string();
+                                Some(
+                                    std::fs::read_to_string(&path)
+                                        .map(|source| (path, source))
+                                        .map_err(|err| format!("read {path_display}: {err}")),
+                                )
+                            }
+                            None => None,
+                        }
+                    },
+                    Message::LocalFilePicked,
+                );
+            }
+            Message::LocalFilePicked(result) => {
+                let Some(result) = result else {
+                    return Task::none();
+                };
+                match result {
+                    Ok((path, source)) => {
+                        self.custom_source = Some((path, source));
+                        return self.reload();
+                    }
+                    Err(err) => {
+                        eprintln!("Couldn't open local file: {err}");
                     }
                 }
-                Err(err) => {
-                    eprintln!("Couldn't download image: {err}");
+            }
+            Message::ImageDownloaded { generation, result } => {
+                if generation != self.source_generation {
+                    return Task::none();
                 }
-            },
+                match result {
+                    Ok(image) => {
+                        if image.is_svg {
+                            self.images_svg.insert(
+                                image.url,
+                                SvgImage {
+                                    handle: svg::Handle::from_memory(image.bytes),
+                                    intrinsic_size: image.intrinsic_size,
+                                },
+                            );
+                        } else {
+                            self.images_normal.insert(
+                                image.url,
+                                RasterImage {
+                                    handle: image::Handle::from_bytes(image.bytes),
+                                    intrinsic_size: image.intrinsic_size,
+                                },
+                            );
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Couldn't download image: {err}");
+                    }
+                }
+            }
         }
         Task::none()
     }
 
     fn view<'a>(&'a self) -> Element<'a, Message> {
+        let source_label = self.source_label();
         let page_selector = widget::row![
             "Page:",
             widget::pick_list(Page::ALL, Some(self.page), |s| Message::ChangePage(s))
@@ -123,6 +176,13 @@ impl App {
 
         widget::scrollable(
             widget::column![
+                widget::row![
+                    button("Open file...").on_press(Message::OpenLocalFile),
+                    button("Reset sample").on_press(Message::ChangePage(self.page)),
+                    widget::text(source_label).size(14),
+                ]
+                .align_y(Alignment::Center)
+                .spacing(10),
                 page_selector,
                 widget::rule::horizontal(2),
                 MarkWidget::new(&self.state)
@@ -137,16 +197,15 @@ impl App {
     }
 
     fn reload(&mut self) -> Task<Message> {
-        self.state =
-            MarkState::with_html_and_markdown(self.page.contents(self.section_marker.as_deref()));
+        self.source_generation = self.source_generation.wrapping_add(1);
+        self.images_normal.clear();
+        self.images_svg.clear();
+        self.images_in_progress.clear();
+        self.state = MarkState::with_html_and_markdown(self.source_text());
         self.download_images()
     }
 
     fn draw_image(&self, info: strimd::ImageInfo) -> Element<'static, Message> {
-        if badge_label(&info).is_some() {
-            return self.draw_badge(info);
-        }
-
         if let Some(image) = self.images_normal.get(info.url).cloned() {
             let mut width = info.width;
             let mut height = info.height;
@@ -196,68 +255,50 @@ impl App {
         }
     }
 
-    fn draw_badge(&self, info: strimd::ImageInfo) -> Element<'static, Message> {
-        let label = badge_label(&info).unwrap_or("badge");
-        let (left, right) = badge_colors(info.url);
-        let left_text = if label.eq_ignore_ascii_case("gfm badge") {
-            "GFM"
-        } else {
-            "Docs"
-        };
-        let right_text = if label.eq_ignore_ascii_case("gfm badge") {
-            "spec"
-        } else {
-            "guide"
-        };
-
-        let left_chip =
-            widget::container(widget::text(left_text).size(11).color(iced::Color::WHITE))
-                .padding([2, 6])
-                .style(move |_| widget::container::Style {
-                    background: Some(left.into()),
-                    text_color: Some(iced::Color::WHITE),
-                    border: iced::Border {
-                        radius: iced::border::top_left(4.0)
-                            .bottom_left(4.0)
-                            .top_right(0.0)
-                            .bottom_right(0.0),
-                        width: 0.0,
-                        color: iced::Color::TRANSPARENT,
-                    },
-                    ..widget::container::Style::default()
-                });
-        let right_chip =
-            widget::container(widget::text(right_text).size(11).color(iced::Color::WHITE))
-                .padding([2, 6])
-                .style(move |_| widget::container::Style {
-                    background: Some(right.into()),
-                    text_color: Some(iced::Color::WHITE),
-                    border: iced::Border {
-                        radius: iced::border::top_left(0.0)
-                            .bottom_left(0.0)
-                            .top_right(4.0)
-                            .bottom_right(4.0),
-                        width: 0.0,
-                        color: iced::Color::TRANSPARENT,
-                    },
-                    ..widget::container::Style::default()
-                });
-
-        widget::row![left_chip, right_chip].spacing(0).into()
-    }
-
     fn download_images(&mut self) -> Task<Message> {
-        let roots = self.page.image_search_roots();
-        Task::batch(self.state.find_image_links().into_iter().map(|url| {
+        let roots = self.image_search_roots();
+        let generation = self.source_generation;
+        let links: Vec<_> = self.state.find_image_links().into_iter().collect();
+        Task::batch(links.into_iter().map(move |url| {
             if self.images_in_progress.insert(url.clone()) {
                 Task::perform(
                     image_loader::download_image(url, roots.clone()),
-                    Message::ImageDownloaded,
+                    move |result| Message::ImageDownloaded { generation, result },
                 )
             } else {
                 Task::none()
             }
         }))
+    }
+
+    fn source_text(&self) -> &str {
+        if let Some((_, source)) = &self.custom_source {
+            source.as_str()
+        } else {
+            self.page.contents(self.section_marker.as_deref())
+        }
+    }
+
+    fn source_label(&self) -> String {
+        if let Some((path, _)) = &self.custom_source {
+            format!("Loaded: {}", path.display())
+        } else {
+            format!("Sample: {}", self.page)
+        }
+    }
+
+    fn image_search_roots(&self) -> Vec<PathBuf> {
+        if let Some((path, _)) = &self.custom_source {
+            image_roots_from_path(path)
+        } else {
+            self.page.image_search_roots()
+        }
+    }
+
+    fn link_base_dir(&self) -> Option<&Path> {
+        self.custom_source
+            .as_ref()
+            .and_then(|(path, _)| path.parent())
     }
 }
 
@@ -328,6 +369,36 @@ impl Page {
     }
 }
 
+fn image_roots_from_path(path: &Path) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Some(parent) = path.parent() {
+        roots.push(parent.to_path_buf());
+
+        for dir in parent.ancestors() {
+            roots.push(dir.to_path_buf());
+            let sibling_nova = dir.join("nova");
+            if sibling_nova.exists() {
+                roots.push(sibling_nova);
+            }
+        }
+    }
+
+    if let Ok(current_dir) = env::current_dir() {
+        for dir in current_dir.ancestors() {
+            roots.push(dir.to_path_buf());
+            let sibling_nova = dir.join("nova");
+            if sibling_nova.exists() {
+                roots.push(sibling_nova);
+            }
+        }
+    }
+
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
 impl Display for Page {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -350,47 +421,32 @@ fn missing_image_fallback(info: strimd::ImageInfo<'_>) -> String {
     format!("[image unavailable: {label}]")
 }
 
-fn badge_label<'a>(info: &'a strimd::ImageInfo<'a>) -> Option<&'a str> {
-    let lower = info.url.to_ascii_lowercase();
-    let looks_like_badge = lower.contains("badge")
-        || lower.contains("img.shields.io")
-        || lower.contains("shields.io/");
-    if !looks_like_badge {
-        return None;
-    }
-
-    info.alt
-        .filter(|label| !label.trim().is_empty())
-        .or_else(|| {
-            if lower.contains("badge-gfm") {
-                Some("GFM badge")
-            } else if lower.contains("badge-docs") {
-                Some("Docs badge")
-            } else {
-                None
-            }
-        })
-}
-
-fn badge_colors(url: &str) -> (iced::Color, iced::Color) {
-    if url.contains("badge-gfm") {
-        (
-            iced::Color::from_rgb8(0x1F, 0x29, 0x37),
-            iced::Color::from_rgb8(0x25, 0x63, 0xEB),
-        )
-    } else {
-        (
-            iced::Color::from_rgb8(0x33, 0x41, 0x55),
-            iced::Color::from_rgb8(0x16, 0xA3, 0x4A),
-        )
-    }
-}
-
-fn open_link(url: &str) -> Result<(), String> {
+fn open_link(url: &str, base_dir: Option<&Path>) -> Result<(), String> {
+    let target = resolve_link_target(url, base_dir);
     for browser in ["google-chrome", "chromium", "chromium-browser", "xdg-open"] {
-        if Command::new(browser).arg(url).spawn().is_ok() {
+        if Command::new(browser).arg(&target).spawn().is_ok() {
             return Ok(());
         }
     }
-    open::that(url).map_err(|err| err.to_string())
+    open::that(target).map_err(|err| err.to_string())
+}
+
+fn resolve_link_target(url: &str, base_dir: Option<&Path>) -> String {
+    if looks_like_external_link(url) || url.starts_with('#') {
+        return url.to_string();
+    }
+
+    let Some(base_dir) = base_dir else {
+        return url.to_string();
+    };
+
+    base_dir.join(url).to_string_lossy().into_owned()
+}
+
+fn looks_like_external_link(url: &str) -> bool {
+    url.starts_with("//")
+        || url.starts_with("mailto:")
+        || url.starts_with("tel:")
+        || url.starts_with("file:")
+        || url.contains("://")
 }

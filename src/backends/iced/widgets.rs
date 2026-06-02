@@ -1,6 +1,6 @@
 use iced::{
-    Background, Border, Color, Element, Font, Length, Padding, Rectangle, Size, Vector,
-    advanced, alignment, widget,
+    Background, Border, Color, Element, Font, Length, Padding, Rectangle, Size, Vector, advanced,
+    alignment, widget,
 };
 
 use super::structs::FStyleLinkButton;

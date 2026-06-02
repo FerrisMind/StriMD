@@ -49,8 +49,19 @@ fn autolink_may_start(line: &str, start: usize) -> bool {
     if start == 0 {
         return true;
     }
+    if inside_markdown_link_destination(line, start) {
+        return false;
+    }
     let prev = line.as_bytes()[start - 1];
     prev.is_ascii_whitespace() || matches!(prev, b'*' | b'_' | b'~' | b'(')
+}
+
+fn inside_markdown_link_destination(line: &str, start: usize) -> bool {
+    if start < 2 {
+        return false;
+    }
+    let bytes = line.as_bytes();
+    bytes[start - 1] == b'(' && bytes[start - 2] == b']'
 }
 
 enum EmailScan {
@@ -263,5 +274,15 @@ mod tests {
     fn invalid_local_prefix_does_not_block_later_email_start() {
         let out = apply_gfm_extended_autolinks("a(user@example.com)\n");
         assert!(out.contains("a(<mailto:user@example.com>)"));
+    }
+
+    #[test]
+    fn relative_markdown_link_destinations_are_not_rewritten_as_autolinks() {
+        let out = apply_gfm_extended_autolinks(
+            "[![PT-BR](https://img.shields.io/badge/PT--BR-README-green)](README.pt-BR.md)\n",
+        );
+        assert!(out.contains("](README.pt-BR.md)"));
+        assert!(!out.contains("http://README.pt-BR.md"));
+        assert!(!out.contains("http://readme.pt-br.md"));
     }
 }

@@ -1,14 +1,15 @@
 //! Mini chatbot for incremental Markdown rendering via StriMD streaming.
 //!
 //! ```bash
-//! cargo run --example llm_chat --features stream,iced/tokio
+//! cargo run --example llm_chat
 //! ```
 
 use iced::{
-    Color, Element, Length, Subscription, Task,
+    Color, Element, Length, Subscription, Task, clipboard, time,
     widget::{self, column, container, row, scrollable, text, text_input},
 };
-use strimd::{BlockKind, MarkState, MarkWidget, StreamDocument, StreamOptions, Style, UpdateMsg};
+use std::time::Duration;
+use strimd::{MarkState, MarkWidget, StreamDocument, StreamOptions, Style, UpdateMsg};
 
 #[path = "shared/chat_stream.rs"]
 mod chat_stream;
@@ -20,27 +21,8 @@ use openai_compat::{ApiConfig, ChatMessage as ApiChatMessage};
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_MODEL: &str = "gpt-4o-mini";
-
-// #region agent log
-fn agent_log(hypothesis_id: &str, location: &str, message: &str, data: &str) {
-    use std::io::Write;
-    let path = "/home/mod479711/Downloads/.cursor/debug-00d1aa.log";
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    {
-        let _ = writeln!(
-            f,
-            r#"{{"sessionId":"00d1aa","hypothesisId":"{hypothesis_id}","location":"{location}","message":"{message}","data":{data},"timestamp":{ts}}}"#
-        );
-    }
-}
-// #endregion
+const STREAM_FLUSH_INTERVAL_MS: u64 = 200;
+const STREAM_FLUSH_BYTES: usize = 1024;
 
 /// MarkWidget uses iced theme text by default (dark on dark in a chat bubble).
 fn assistant_mark_style() -> Style {
@@ -77,8 +59,15 @@ enum Message {
     ToggleSettings,
     Send,
     SimulateTestMd,
+    CopyText(String),
+    FlushPending,
     UpdateMark(u64, UpdateMsg),
     Stream(ChatStreamEvent),
+}
+
+struct PendingDelta {
+    msg_id: u64,
+    text: String,
 }
 
 struct App {
@@ -91,6 +80,7 @@ struct App {
     next_id: u64,
     messages: Vec<ChatMessage>,
     active_stream: Option<ActiveStream>,
+    pending_delta: Option<PendingDelta>,
 }
 
 impl App {
@@ -103,11 +93,13 @@ impl App {
             Message::ToggleSettings => self.settings_open = !self.settings_open,
             Message::Send => return self.send_prompt(),
             Message::SimulateTestMd => return self.simulate_test_md(),
+            Message::CopyText(content) => return Self::copy_text(content),
+            Message::FlushPending => self.flush_pending_delta(),
             Message::UpdateMark(id, msg) => {
-                if let Some(m) = self.messages.iter_mut().find(|m| m.id == id) {
-                    if let Some(state) = &mut m.mark_state {
-                        state.update(msg);
-                    }
+                if let Some(m) = self.messages.iter_mut().find(|m| m.id == id)
+                    && let Some(state) = &mut m.mark_state
+                {
+                    state.update(msg);
                 }
             }
             Message::Stream(event) => return self.handle_stream(event),
@@ -145,6 +137,7 @@ impl App {
             messages: api_messages,
         });
         self.busy = true;
+        self.pending_delta = None;
         Task::none()
     }
 
@@ -161,68 +154,33 @@ impl App {
 
         self.active_stream = Some(ActiveStream::Simulate { msg_id, chunks });
         self.busy = true;
+        self.pending_delta = None;
         Task::none()
+    }
+
+    fn copy_text(content: String) -> Task<Message> {
+        clipboard::write::<Message>(content)
     }
 
     fn handle_stream(&mut self, event: ChatStreamEvent) -> Task<Message> {
         match event {
             ChatStreamEvent::Delta { msg_id, chunk } => {
-                if let Some(message) = self.messages.iter_mut().find(|m| m.id == msg_id) {
-                    if let (Some(stream), Some(mark)) =
-                        (&mut message.stream, &mut message.mark_state)
-                    {
-                        let update = stream.append(&chunk);
-                        mark.apply_stream_update(stream, &update);
-                        message.plain_text.push_str(&chunk);
-
-                        // #region agent log
-                        let has_table = stream.blocks().any(|b| b.kind == BlockKind::Table)
-                            || stream.pending().is_some_and(|p| p.kind == BlockKind::Table);
-                        if has_table || message.plain_text.contains('|') {
-                            let kinds: Vec<String> =
-                                stream.blocks().map(|b| format!("{:?}", b.kind)).collect();
-                            let pending = stream
-                                .pending()
-                                .map(|p| format!("{:?}", p.kind))
-                                .unwrap_or_else(|| "none".into());
-                            agent_log(
-                                "A",
-                                "llm_chat.rs:handle_stream",
-                                "stream_state",
-                                &format!(
-                                    r#"{{"msg_id":{msg_id},"text_len":{},"has_table":{has_table},"kinds":{:?},"pending":"{pending}","patch":"{:?}"}}"#,
-                                    message.plain_text.len(),
-                                    kinds,
-                                    update.patch
-                                ),
-                            );
-                        }
-                        // #endregion
-                    }
+                self.buffer_delta(msg_id, &chunk);
+                if self
+                    .pending_delta
+                    .as_ref()
+                    .is_some_and(|pending| pending.text.len() >= STREAM_FLUSH_BYTES)
+                {
+                    self.flush_pending_delta();
                 }
             }
-            ChatStreamEvent::Done { msg_id } => {
-                // #region agent log
-                if let Some(message) = self.messages.iter().find(|m| m.id == msg_id) {
-                    if let Some(stream) = &message.stream {
-                        let has_table = stream.blocks().any(|b| b.kind == BlockKind::Table);
-                        agent_log(
-                            "B",
-                            "llm_chat.rs:stream_done",
-                            "final_state",
-                            &format!(
-                                r#"{{"msg_id":{msg_id},"text_len":{},"has_table":{has_table},"block_count":{}}}"#,
-                                message.plain_text.len(),
-                                stream.blocks().count()
-                            ),
-                        );
-                    }
-                }
-                // #endregion
+            ChatStreamEvent::Done => {
+                self.flush_pending_delta();
                 self.active_stream = None;
                 self.busy = false;
             }
             ChatStreamEvent::Error { msg_id, error } => {
+                self.flush_pending_delta();
                 if let Some(message) = self.messages.iter_mut().find(|m| m.id == msg_id) {
                     let err_md = format!("\n\n**Error:** {error}");
                     message.plain_text.push_str(&err_md);
@@ -238,6 +196,39 @@ impl App {
             }
         }
         Task::none()
+    }
+
+    fn buffer_delta(&mut self, msg_id: u64, chunk: &str) {
+        match &mut self.pending_delta {
+            Some(pending) if pending.msg_id == msg_id => pending.text.push_str(chunk),
+            Some(_) => {
+                self.flush_pending_delta();
+                self.pending_delta = Some(PendingDelta {
+                    msg_id,
+                    text: chunk.to_string(),
+                });
+            }
+            None => {
+                self.pending_delta = Some(PendingDelta {
+                    msg_id,
+                    text: chunk.to_string(),
+                });
+            }
+        }
+    }
+
+    fn flush_pending_delta(&mut self) {
+        let Some(PendingDelta { msg_id, text }) = self.pending_delta.take() else {
+            return;
+        };
+
+        if let Some(message) = self.messages.iter_mut().find(|m| m.id == msg_id)
+            && let (Some(stream), Some(mark)) = (&mut message.stream, &mut message.mark_state)
+        {
+            let update = stream.append(&text);
+            mark.apply_stream_update(stream, &update);
+            message.plain_text.push_str(&text);
+        }
     }
 
     fn push_user_message(&mut self, text: String) {
@@ -366,7 +357,7 @@ impl App {
         let content: Element<'a, Message> = match message.role {
             MessageRole::User => text(&message.plain_text).color(fg).into(),
             MessageRole::Assistant => {
-                if let Some(state) = &message.mark_state {
+                let body: Element<'a, Message> = if let Some(state) = &message.mark_state {
                     let msg_id = message.id;
                     container(
                         MarkWidget::new(state)
@@ -377,7 +368,19 @@ impl App {
                     .into()
                 } else {
                     text(&message.plain_text).color(fg).into()
-                }
+                };
+
+                column![
+                    row![
+                        widget::Space::new().width(Length::Fill),
+                        widget::button("Copy")
+                            .on_press(Message::CopyText(message.plain_text.clone()))
+                    ]
+                    .align_y(iced::Alignment::Center),
+                    body,
+                ]
+                .spacing(8)
+                .into()
             }
         };
 
@@ -405,7 +408,15 @@ impl App {
 }
 
 fn app_subscription(app: &App) -> Subscription<Message> {
-    stream_subscription(&app.active_stream).map(Message::Stream)
+    let stream = stream_subscription(&app.active_stream).map(Message::Stream);
+    if app.busy {
+        Subscription::batch([
+            stream,
+            time::every(Duration::from_millis(STREAM_FLUSH_INTERVAL_MS)).map(|_| Message::FlushPending),
+        ])
+    } else {
+        stream
+    }
 }
 
 fn main() -> iced::Result {
@@ -420,6 +431,7 @@ fn main() -> iced::Result {
             next_id: 1,
             messages: Vec::new(),
             active_stream: None,
+            pending_delta: None,
         },
         App::update,
         App::view,

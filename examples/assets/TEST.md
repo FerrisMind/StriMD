@@ -139,3 +139,21 @@ Right aligned columns
     <ruby>漢 字 <rt>かん</rt> <rt>じ</rt> </ruby><br>
     <ruby> <span> 漢<rt>かん</rt> </span></ruby>
 </details>
+
+<details>
+    <summary>Math and Mermaid</summary>
+
+Inline math: $E = mc^2$ and $\frac{a}{b}$.
+
+Display math:
+
+$$
+\int_0^1 x^2 \, dx = \frac{1}{3}
+$$
+
+```mermaid
+flowchart LR
+    A[RaTeX] --> B[StriMD]
+    B --> C[iced]
+```
+</details>

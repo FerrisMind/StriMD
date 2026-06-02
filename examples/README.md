@@ -34,7 +34,7 @@ which also showcases basic rendering of images.
 ![](assets/image.png)
 
 ```sh
-cargo run --example image --features="iced/image"
+cargo run --example image
 ```
 
 ---
@@ -55,7 +55,7 @@ Side-by-side comparison with StriMD (left) and VSCode (right):
 ![](assets/large_readme.png)
 
 ```sh
-cargo run --example large_readme --features="iced/image iced/svg"
+cargo run --example large_readme
 ```
 
 ---
@@ -99,7 +99,7 @@ Mini chatbot to talk to an OpenAI-compatible API and render assistant replies wi
 - **Simulate TEST.md** — offline stream of [`assets/TEST.md`](assets/TEST.md) (no API key)
 
 ```sh
-cargo run --example llm_chat --features stream,iced/tokio
+cargo run --example llm_chat
 ```
 
 Optional: `OPENAI_API_KEY` is pre-filled from the environment. For Ollama, set base URL to `http://localhost:11434/v1` and a local model name.

@@ -186,7 +186,7 @@ Functions return `Result` instead of panicking on malformed input.
 | Example | Command |
 |---------|---------|
 | Hello (iced) | `cargo run --example hello` |
-| Math + Mermaid | `cargo run --example math_mermaid --features "_iced_backend,math,mermaid"` |
+| Math + Mermaid | `cargo run --example math_mermaid` |
 | Static export | `cargo run --example static_export --no-default-features --features no_iced,static` |
 | Stream chat | `cargo run --example stream_chat --no-default-features --features no_iced,stream` |
 

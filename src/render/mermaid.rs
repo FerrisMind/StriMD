@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use mermaid_rs_renderer::{RenderOptions, render_with_options};
+use mermaid_rs_renderer::{
+    RenderOptions, compute_layout, parse_mermaid, render_svg, render_with_options,
+};
 
 use crate::core::error::RenderError;
 use crate::render::svg_util::SvgArtifact;
@@ -43,13 +45,51 @@ pub fn mermaid_to_svg(source: &str) -> Result<SvgArtifact, RenderError> {
         return Err(RenderError::new("empty Mermaid source"));
     }
 
-    let svg = render_with_options(trimmed, RenderOptions::modern())
-        .map_err(|e| RenderError::new(format!("mermaid render: {e}")))?;
+    let options = RenderOptions::modern();
+    let svg = match render_with_options(trimmed, options.clone()) {
+        Ok(svg) => svg,
+        Err(err) if should_retry_with_public_pipeline(trimmed, &err.to_string()) => {
+            render_with_public_pipeline(trimmed, &options)
+                .map_err(|e| RenderError::new(format!("mermaid render: {e}")))?
+        }
+        Err(err) => return Err(RenderError::new(format!("mermaid render: {err}"))),
+    };
 
     if !svg.contains("<svg") {
         return Err(RenderError::new("mermaid produced no SVG root"));
     }
     Ok(SvgArtifact::from_svg_string(svg))
+}
+
+fn render_with_public_pipeline(input: &str, options: &RenderOptions) -> Result<String, String> {
+    let parsed = parse_mermaid(input).map_err(|err| err.to_string())?;
+    let layout = compute_layout(&parsed.graph, &options.theme, &options.layout);
+    Ok(render_svg(&layout, &options.theme, &options.layout))
+}
+
+fn should_retry_with_public_pipeline(input: &str, error: &str) -> bool {
+    let lower_input = input.to_ascii_lowercase();
+    lower_input.starts_with("sequencediagram")
+        && lower_input.lines().any(|line| {
+            let trimmed = line.trim_start();
+            trimmed == "alt"
+                || trimmed.starts_with("alt ")
+                || trimmed == "opt"
+                || trimmed.starts_with("opt ")
+                || trimmed == "loop"
+                || trimmed.starts_with("loop ")
+                || trimmed == "par"
+                || trimmed.starts_with("par ")
+                || trimmed == "rect"
+                || trimmed.starts_with("rect ")
+                || trimmed == "critical"
+                || trimmed.starts_with("critical ")
+                || trimmed == "break"
+                || trimmed.starts_with("break ")
+                || trimmed == "box"
+                || trimmed.starts_with("box ")
+        })
+        && error.contains("matching subgraph")
 }
 
 #[cfg(test)]
@@ -60,6 +100,13 @@ mod tests {
     fn renders_flowchart() {
         let src = "flowchart LR\n  A-->B\n";
         let art = mermaid_to_svg(src).expect("svg");
+        assert!(art.bytes.starts_with(b"<svg"));
+    }
+
+    #[test]
+    fn sequence_alt_uses_wrapper_fallback() {
+        let src = "sequenceDiagram\nA->>B: req\nalt ok\nB-->>A: yes\nend\n";
+        let art = mermaid_to_svg(src).expect("sequence svg");
         assert!(art.bytes.starts_with(b"<svg"));
     }
 }

@@ -25,6 +25,31 @@ fn mermaid_renders_svg() {
 }
 
 #[test]
+fn mermaid_renders_streaming_append_sequence() {
+    let src = r#"sequenceDiagram
+    participant LLM
+    participant StreamDocument
+    participant MdStream
+    participant Adapter as PulldownAdapter
+    participant Renderer
+
+    LLM->>StreamDocument: append(chunk)
+    StreamDocument->>MdStream: append(chunk)
+    MdStream-->>StreamDocument: Update { committed, pending, reset, invalidated }
+    alt reset
+        StreamDocument->>StreamDocument: clear blocks/cache
+    end
+    StreamDocument->>Adapter: apply_update(update)
+    Adapter-->>StreamDocument: committed event cache updated
+    StreamDocument->>StreamDocument: rebuild affected RenderBlocks
+    StreamDocument-->>Renderer: StreamUpdate { patch, reset, invalidated }
+    Renderer->>Renderer: update affected blocks only
+"#;
+    let art = mermaid_to_svg(src).expect("streaming append mermaid svg");
+    assert!(std::str::from_utf8(&art.bytes).unwrap().contains("<svg"));
+}
+
+#[test]
 fn document_math_display_block() {
     let doc =
         Document::parse(&fixture("math_display.md"), ParseProfile::GitHubPreview).expect("parse");

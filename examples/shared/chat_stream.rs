@@ -14,7 +14,7 @@ use super::openai_compat::{ApiConfig, ChatMessage};
 #[derive(Debug, Clone)]
 pub enum ChatStreamEvent {
     Delta { msg_id: u64, chunk: String },
-    Done { msg_id: u64 },
+    Done,
     Error { msg_id: u64, error: String },
 }
 
@@ -35,23 +35,8 @@ impl Hash for ActiveStream {
     fn hash<H: Hasher>(&self, state: &mut H) {
         std::mem::discriminant(self).hash(state);
         match self {
-            ActiveStream::Api {
-                msg_id,
-                config,
-                messages,
-            } => {
+            ActiveStream::Api { msg_id, .. } | ActiveStream::Simulate { msg_id, .. } => {
                 msg_id.hash(state);
-                config.hash(state);
-                for m in messages {
-                    m.role.hash(state);
-                    m.content.hash(state);
-                }
-            }
-            ActiveStream::Simulate { msg_id, chunks } => {
-                msg_id.hash(state);
-                for c in chunks {
-                    c.hash(state);
-                }
             }
         }
     }
@@ -81,7 +66,7 @@ fn run_worker(active: &ActiveStream) -> impl iced::futures::Stream<Item = ChatSt
             messages,
         } => match stream_api(&config, &messages, msg_id, &mut output).await {
             Ok(()) => {
-                let _ = output.send(ChatStreamEvent::Done { msg_id }).await;
+                let _ = output.send(ChatStreamEvent::Done).await;
             }
             Err(error) => {
                 let _ = output.send(ChatStreamEvent::Error { msg_id, error }).await;
@@ -98,7 +83,7 @@ fn run_worker(active: &ActiveStream) -> impl iced::futures::Stream<Item = ChatSt
                     return;
                 }
             }
-            let _ = output.send(ChatStreamEvent::Done { msg_id }).await;
+            let _ = output.send(ChatStreamEvent::Done).await;
         }
     })
 }
@@ -143,17 +128,16 @@ async fn stream_api(
         while let Some(pos) = buffer.find('\n') {
             let line: String = buffer.drain(..=pos).collect();
             let line = line.trim_end_matches('\n').trim();
-            if let Some(delta) = parse_sse_delta(line) {
-                if output
+            if let Some(delta) = parse_sse_delta(line)
+                && output
                     .send(ChatStreamEvent::Delta {
                         msg_id,
                         chunk: delta,
                     })
                     .await
                     .is_err()
-                {
-                    return Ok(());
-                }
+            {
+                return Ok(());
             }
         }
     }

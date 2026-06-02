@@ -30,6 +30,7 @@ impl CodeBlock {
 }
 
 /// One renderable part of a split markdown document.
+#[allow(clippy::large_enum_variant)]
 pub enum MarkSegment {
     Rich(MarkState),
     Code(CodeBlock),

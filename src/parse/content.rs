@@ -98,13 +98,13 @@ pub fn block_content_from_events(
     gfm_tagfilter: bool,
 ) -> BlockContent {
     #[cfg(feature = "math")]
-    if matches!(slice.first(), Some(Event::Start(Tag::Paragraph))) {
-        if let Some(latex) = display_math_from_paragraph_slice(slice) {
-            return BlockContent::Math {
-                latex,
-                display: true,
-            };
-        }
+    if matches!(slice.first(), Some(Event::Start(Tag::Paragraph)))
+        && let Some(latex) = display_math_from_paragraph_slice(slice)
+    {
+        return BlockContent::Math {
+            latex,
+            display: true,
+        };
     }
 
     if is_code_fence_slice(slice) {

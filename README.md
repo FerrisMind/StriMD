@@ -40,7 +40,7 @@ You can find runnable examples [here](examples/README.md)
 
 > **Note:** Code blocks in this readme are `no_run` only — they compile during
 > `cargo test` but do **not** open an iced window. To see the UI, run
-> `cargo run --example hello` (or `live_edit`).
+> `cargo run --example hello` (or `live_edit`, `large_readme`, `llm_chat`).
 
 <details>
 <summary>Click to expand a full example</summary>

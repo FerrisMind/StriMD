@@ -24,14 +24,21 @@ use crate::render::MermaidCache;
 #[cfg(any(feature = "math", feature = "mermaid"))]
 use crate::render::SvgArtifact;
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct CodeMarkdownCacheKey {
+    language: Option<String>,
+    code: String,
+}
+
 /// Fenced code payload for backends that render code blocks outside the DOM.
 #[derive(Debug, Clone)]
 pub(crate) struct CachedCodeBlock {
     #[allow(dead_code)]
     pub(crate) language: Option<String>,
     pub(crate) code: String,
+    pub(crate) complete: bool,
     /// Pre-parsed iced markdown items (highlighted lines for [`iced::widget::markdown::code_block`]).
-    pub(crate) markdown_items: Rc<Vec<iced::widget::markdown::Item>>,
+    pub(crate) markdown_items: Option<Rc<Vec<iced::widget::markdown::Item>>>,
 }
 
 /// Rasterizable SVG payload for math and Mermaid blocks.
@@ -66,6 +73,8 @@ pub(crate) struct BlockRenderCache {
     latex_cache: RefCell<LatexCache>,
     #[cfg(feature = "mermaid")]
     mermaid_cache: RefCell<MermaidCache>,
+    code_markdown_cache:
+        RefCell<HashMap<CodeMarkdownCacheKey, Rc<Vec<iced::widget::markdown::Item>>>>,
     #[cfg(test)]
     compile_count: usize,
 }
@@ -84,6 +93,7 @@ impl Default for BlockRenderCache {
             latex_cache: RefCell::new(LatexCache::new()),
             #[cfg(feature = "mermaid")]
             mermaid_cache: RefCell::new(MermaidCache::new()),
+            code_markdown_cache: RefCell::new(HashMap::new()),
             #[cfg(test)]
             compile_count: 0,
         }
@@ -227,16 +237,13 @@ impl BlockRenderCache {
                 CachedBlock::Fragment(markdown_to_fragment(compiled, self.profile))
             }
             BlockContent::Html(fragment) => CachedBlock::Fragment(fragment.clone()),
-            BlockContent::Code { lang, .. } => {
+            BlockContent::Code { lang, complete } => {
                 let code = block.source.trim_end_matches('\n').to_string();
-                let markdown_items =
-                    Rc::new(crate::backends::iced::iced_markdown_items_for_codeblock(
-                        lang.as_deref(),
-                        &code,
-                    ));
+                let markdown_items = complete.then(|| self.code_markdown_items(lang.as_deref(), &code));
                 CachedBlock::Code(CachedCodeBlock {
                     language: lang.clone(),
                     code,
+                    complete: *complete,
                     markdown_items,
                 })
             }
@@ -263,6 +270,37 @@ impl BlockRenderCache {
     #[cfg(feature = "math")]
     pub(crate) fn display_math_svg(&self, latex: &str) -> Option<CachedSvg> {
         self.render_math_svg(latex, true)
+    }
+
+    #[cfg(feature = "mermaid")]
+    pub(crate) fn mermaid_svg(&self, source: &str) -> Option<CachedSvg> {
+        self.mermaid_cache
+            .borrow_mut()
+            .render(source)
+            .ok()
+            .map(|artifact| cached_svg_from_artifact(artifact.as_ref()))
+    }
+
+    pub(crate) fn code_markdown_items(
+        &self,
+        language: Option<&str>,
+        code: &str,
+    ) -> Rc<Vec<iced::widget::markdown::Item>> {
+        let key = CodeMarkdownCacheKey {
+            language: language.map(str::to_string),
+            code: code.to_string(),
+        };
+        if let Some(items) = self.code_markdown_cache.borrow().get(&key) {
+            return Rc::clone(items);
+        }
+
+        let items = Rc::new(crate::backends::iced::iced_markdown_items_for_codeblock(
+            language, code,
+        ));
+        self.code_markdown_cache
+            .borrow_mut()
+            .insert(key, Rc::clone(&items));
+        items
     }
 
     #[cfg(feature = "math")]
@@ -891,8 +929,10 @@ fn demo() {}
         );
         assert!(
             c.markdown_items
-                .iter()
-                .any(|item| matches!(item, iced::widget::markdown::Item::CodeBlock { .. })),
+                .as_ref()
+                .is_some_and(|items| items
+                    .iter()
+                    .any(|item| matches!(item, iced::widget::markdown::Item::CodeBlock { .. }))),
             "expected iced markdown CodeBlock item for syntax highlighting"
         );
     }

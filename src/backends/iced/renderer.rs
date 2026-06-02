@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use iced::widget::markdown::{self};
 use iced::{Element, Font, Length, Padding, Pixels, border, padding, widget};
 
@@ -30,6 +32,12 @@ const VSCODE_INLINE_RADIUS: f32 = 4.0;
 const VSCODE_INLINE_OPTICAL_GAP: f32 = 1.0;
 const KBD_INLINE_OPTICAL_GAP: f32 = 0.5;
 
+#[derive(Debug, Clone, Copy, Default)]
+struct BlockSpacing {
+    top: f32,
+    bottom: f32,
+}
+
 // Add everything to one place
 pub trait ValidTheme:
     widget::button::Catalog
@@ -58,6 +66,121 @@ impl<'a, M: Clone + 'static, T: ValidTheme + 'a> MarkWidget<'a, M, T>
 where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
 {
+    fn paragraph_block_spacing(&self) -> BlockSpacing {
+        BlockSpacing {
+            top: 0.0,
+            bottom: self.text_size,
+        }
+    }
+
+    fn list_block_spacing(&self) -> BlockSpacing {
+        BlockSpacing {
+            top: 0.0,
+            bottom: self.text_size * 0.7,
+        }
+    }
+
+    fn heading_block_spacing(&self, level: u16) -> BlockSpacing {
+        BlockSpacing {
+            top: if level <= 1 {
+                0.0
+            } else {
+                self.text_size * 1.5
+            },
+            bottom: self.text_size,
+        }
+    }
+
+    fn block_spacing_for_tag(&self, tag: &str) -> BlockSpacing {
+        match tag {
+            "h1" => self.heading_block_spacing(1),
+            "h2" => self.heading_block_spacing(2),
+            "h3" => self.heading_block_spacing(3),
+            "h4" => self.heading_block_spacing(4),
+            "h5" => self.heading_block_spacing(5),
+            "h6" => self.heading_block_spacing(6),
+            "p" => self.paragraph_block_spacing(),
+            "ul" | "ol" | "table" => self.list_block_spacing(),
+            "pre" | "blockquote" | "details" => self.paragraph_block_spacing(),
+            "hr" => BlockSpacing {
+                top: self.text_size,
+                bottom: self.text_size,
+            },
+            _ => self.paragraph_block_spacing(),
+        }
+    }
+
+    fn block_spacing_for_fragment(&self, fragment: &HtmlFragment) -> BlockSpacing {
+        for &root in fragment.roots() {
+            if let Some(HtmlNode::Element { tag, .. }) = fragment.node(root) {
+                return self.block_spacing_for_tag(tag.as_str());
+            }
+        }
+        self.paragraph_block_spacing()
+    }
+
+    fn block_spacing_for_cached_block(&self, block: &CachedBlock) -> BlockSpacing {
+        match block {
+            CachedBlock::Fragment(fragment) => self.block_spacing_for_fragment(fragment),
+            CachedBlock::Code(_) => self.paragraph_block_spacing(),
+            #[cfg(feature = "math")]
+            CachedBlock::Math(_) => self.paragraph_block_spacing(),
+            #[cfg(feature = "mermaid")]
+            CachedBlock::Mermaid(_) => self.paragraph_block_spacing(),
+            CachedBlock::Empty => BlockSpacing::default(),
+        }
+    }
+
+    fn stack_block_elements(
+        &self,
+        blocks: Vec<(Element<'a, M, T>, BlockSpacing)>,
+    ) -> Element<'a, M, T> {
+        let mut column = widget::Column::new().spacing(0).width(Length::Fill);
+        let mut previous_bottom: f32 = 0.0;
+
+        for (index, (element, spacing)) in blocks.into_iter().enumerate() {
+            let gap_before = if index == 0 {
+                0.0
+            } else {
+                previous_bottom.max(spacing.top)
+            };
+            previous_bottom = spacing.bottom;
+
+            let wrapped: Element<'a, M, T> = if gap_before > 0.0 {
+                widget::container(element)
+                    .padding(Padding::default().top(gap_before))
+                    .into()
+            } else {
+                element
+            };
+            column = column.push(wrapped);
+        }
+
+        column.into()
+    }
+
+    fn stack_rendered_blocks(
+        &self,
+        blocks: Vec<(RenderedSpan<'a, M, T>, BlockSpacing)>,
+    ) -> RenderedSpan<'a, M, T> {
+        let mut blocks: Vec<_> = blocks
+            .into_iter()
+            .filter(|(span, _)| !span.is_empty())
+            .collect();
+        if blocks.is_empty() {
+            return RenderedSpan::None;
+        }
+        if blocks.len() == 1 {
+            return blocks.swap_remove(0).0;
+        }
+
+        let elements = blocks
+            .into_iter()
+            .map(|(span, spacing)| (span.render(), spacing))
+            .collect();
+        RenderedSpan::from(self.stack_block_elements(elements))
+    }
+
     fn with_block_context<R>(
         &mut self,
         block_id: Option<crate::core::ids::BlockId>,
@@ -229,13 +352,11 @@ where
                 if data.flags.contains(ChildDataFlags::INSIDE_RUBY) {
                     RenderedSpan::None
                 } else {
-                    RenderedSpan::Spans(vec![
-                        widget::span("\n").size(text_size_for_data(
-                            self.text_size,
-                            self.heading_scale,
-                            data.heading_weight,
-                        )),
-                    ])
+                    RenderedSpan::Spans(vec![widget::span("\n").size(text_size_for_data(
+                        self.text_size,
+                        self.heading_scale,
+                        data.heading_weight,
+                    ))])
                 }
             }
             "hr" => widget::rule::horizontal(1.0).into(),
@@ -292,7 +413,7 @@ where
                 self.current_dropdown_id += 1;
                 id
             });
-        let e = if let (Some(update), Some(state)) = (
+        if let (Some(update), Some(state)) = (
             self.fn_update.clone(),
             self.state.dropdown_state.get(&dropdown_id).copied(),
         ) {
@@ -340,15 +461,13 @@ where
             .padding(10)
             .spacing(10)
             .into()
-        };
-        e
+        }
     }
 
     fn draw_blockquote(&mut self, node: DomRef<'_>, data: ChildData) -> RenderedSpan<'a, M, T> {
         let alert = github_alert_kind(node.get_attr("class"));
-        let content = self.render_children(node, data);
-
         if let Some(alert) = alert {
+            let content = self.render_children(node, data);
             let icon_text = self
                 .fn_github_alert_icon
                 .as_ref()
@@ -375,7 +494,7 @@ where
             quote_block(body, alert.color(), 3.0, 11.0).into()
         } else {
             let quote_color = iced::Color::from_rgb8(0x6A, 0x73, 0x7D);
-            let body = self.simple_quote_body(node, content, quote_color);
+            let body = self.simple_quote_body(node, data, quote_color);
             quote_block(body, quote_color, 4.0, 12.0).into()
         }
     }
@@ -541,9 +660,9 @@ where
     }
 
     fn simple_quote_body(
-        &self,
+        &mut self,
         node: DomRef<'_>,
-        content: RenderedSpan<'a, M, T>,
+        data: ChildData,
         color: iced::Color,
     ) -> Element<'a, M, T> {
         fn contains_direct_br(node: DomRef<'_>) -> bool {
@@ -560,16 +679,14 @@ where
             .filter(|child| !child.is_useless())
             .collect::<Vec<_>>();
 
-        if meaningful_children.len() == 1
+        let content = if meaningful_children.len() == 1
             && meaningful_children[0].tag_name() == Some("p")
             && !contains_direct_br(meaningful_children[0])
         {
-            let text = clean_whitespace(&node.accumulated_text());
-            let span: widget::text::Span<'a, M, Font> = widget::span(text).color(color);
-            return widget::container(widget::rich_text([span]))
-                .width(Length::Fill)
-                .into();
-        }
+            self.render_children(meaningful_children[0], data)
+        } else {
+            self.render_children(node, data)
+        };
 
         match self.tint_rendered_span(content, color) {
             RenderedSpan::Spans(spans) => {
@@ -717,7 +834,7 @@ where
     ) -> RenderedSpan<'a, M, T> {
         let children = node.children();
 
-        let mut column = Vec::new();
+        let mut column: Vec<(RenderedSpan<'a, M, T>, BlockSpacing)> = Vec::new();
         let mut row = RenderedSpan::None;
 
         let meaningful = self.significant_children(&children);
@@ -742,7 +859,10 @@ where
                 if !row.is_empty() {
                     let mut old_row = RenderedSpan::None;
                     std::mem::swap(&mut row, &mut old_row);
-                    column.push(Self::apply_alignment_to_block(old_row, data.alignment));
+                    column.push((
+                        Self::apply_alignment_to_block(old_row, data.alignment),
+                        self.paragraph_block_spacing(),
+                    ));
                 }
                 let mut shield_row = widget::Row::new().spacing(6.0);
                 while idx < meaningful.len() && meaningful[idx].is_shield_paragraph() {
@@ -751,15 +871,18 @@ where
                     block_index += 1;
                 }
                 let badge_row: Element<'a, M, T> = shield_row.width(Length::Shrink).into();
-                column.push(if let Some(align) = data.alignment {
-                    RenderedSpan::Elem(
-                        Self::stack_align_in_viewport(badge_row, align),
-                        Emp::NonEmpty,
-                        5.0,
-                    )
-                } else {
-                    RenderedSpan::from(badge_row)
-                });
+                column.push((
+                    if let Some(align) = data.alignment {
+                        RenderedSpan::Elem(
+                            Self::stack_align_in_viewport(badge_row, align),
+                            Emp::NonEmpty,
+                            5.0,
+                        )
+                    } else {
+                        RenderedSpan::from(badge_row)
+                    },
+                    self.paragraph_block_spacing(),
+                ));
                 continue;
             }
 
@@ -776,10 +899,16 @@ where
                 if !row.is_empty() {
                     let mut old_row = RenderedSpan::None;
                     std::mem::swap(&mut row, &mut old_row);
-                    column.push(Self::apply_alignment_to_block(old_row, data.alignment));
+                    column.push((
+                        Self::apply_alignment_to_block(old_row, data.alignment),
+                        self.paragraph_block_spacing(),
+                    ));
                 }
 
-                column.push(Self::apply_alignment_to_block(element, data.alignment));
+                column.push((
+                    Self::apply_alignment_to_block(element, data.alignment),
+                    self.block_spacing_for_tag(item.tag_name().unwrap_or("div")),
+                ));
                 block_index += 1;
             } else {
                 row = row + element;
@@ -789,27 +918,13 @@ where
         }
 
         if !row.is_empty() {
-            column.push(Self::apply_alignment_to_block(row, data.alignment));
+            column.push((
+                Self::apply_alignment_to_block(row, data.alignment),
+                self.paragraph_block_spacing(),
+            ));
         }
 
-        let len = column.len();
-        let is_empty = column.is_empty() || column.iter().filter(|n| !n.is_empty()).count() == 0;
-
-        if is_empty {
-            RenderedSpan::None
-        } else if len == 1 {
-            column.into_iter().next().unwrap()
-        } else {
-            widget::column(
-                column
-                    .into_iter()
-                    .filter(|n| !n.is_empty())
-                    .map(RenderedSpan::render),
-            )
-            .spacing(self.paragraph_spacing.unwrap_or(5.0))
-            .width(Length::Fill)
-            .into()
-        }
+        self.stack_rendered_blocks(column)
     }
 
     /// `<center>` / `align="center"`: text lines use `rich_text` centering; block widgets centered in viewport.
@@ -919,7 +1034,7 @@ where
         node: DomRef<'_>,
         data: ChildData,
     ) -> RenderedSpan<'a, M, T> {
-        let mut column = Vec::new();
+        let mut column: Vec<(RenderedSpan<'a, M, T>, BlockSpacing)> = Vec::new();
         let mut row = RenderedSpan::None;
         let children = node.children();
 
@@ -936,34 +1051,24 @@ where
                 if !row.is_empty() {
                     let mut old_row = RenderedSpan::None;
                     std::mem::swap(&mut row, &mut old_row);
-                    column.push(old_row);
+                    column.push((old_row, self.list_block_spacing()));
                 }
-                column.push(element);
+                let spacing = if child.tag_name() == Some("p") {
+                    self.list_block_spacing()
+                } else {
+                    self.block_spacing_for_tag(child.tag_name().unwrap_or("div"))
+                };
+                column.push((element, spacing));
             } else {
                 row = row + element;
             }
         }
 
         if !row.is_empty() {
-            column.push(row);
+            column.push((row, self.list_block_spacing()));
         }
 
-        let len = column.len();
-        if len == 0 {
-            RenderedSpan::None
-        } else if len == 1 {
-            column.into_iter().next().unwrap()
-        } else {
-            widget::column(
-                column
-                    .into_iter()
-                    .filter(|n| !n.is_empty())
-                    .map(RenderedSpan::render),
-            )
-            .spacing(self.paragraph_spacing.unwrap_or(5.0))
-            .width(Length::Fill)
-            .into()
-        }
+        self.stack_rendered_blocks(column)
     }
 
     /// Badge `<p>` with only `img` or `a>img` — render the graphic directly (no extra block wrap).
@@ -999,10 +1104,36 @@ where
                 let lang = code_node
                     .get_attr("class")
                     .and_then(|c| c.strip_prefix("language-").map(str::to_string));
-                let items = crate::backends::iced::iced_markdown_items_for_codeblock(
-                    lang.as_deref(),
-                    text.trim_end_matches('\n'),
-                );
+                let block_cache = self.state.cache.as_ref();
+                #[cfg(feature = "mermaid")]
+                if lang
+                    .as_deref()
+                    .is_some_and(crate::parse::content::is_mermaid_lang)
+                    && let Some(svg) = block_cache
+                        .and_then(|cache| cache.mermaid_svg(&text))
+                        .or_else(|| {
+                            crate::render::mermaid_to_svg(&text)
+                                .ok()
+                                .map(|artifact| {
+                                    crate::html::block_cache::cached_svg_from_artifact(&artifact)
+                                })
+                        })
+                {
+                    let max_w = 560.0_f32;
+                    let max_h = self.text_size * 16.0;
+                    return RenderedSpan::from(Self::element_from_cached_svg_fit(
+                        &svg, max_w, max_h,
+                    ));
+                }
+                let trimmed = text.trim_end_matches('\n');
+                let items = block_cache
+                    .map(|cache| cache.code_markdown_items(lang.as_deref(), trimmed))
+                    .unwrap_or_else(|| {
+                        Rc::new(crate::backends::iced::iced_markdown_items_for_codeblock(
+                            lang.as_deref(),
+                            trimmed,
+                        ))
+                    });
                 if let Some(lines) = items.iter().find_map(|item| match item {
                     markdown::Item::CodeBlock { lines, .. } => Some(lines.as_slice()),
                     _ => None,
@@ -1060,11 +1191,7 @@ where
                         left: VSCODE_INLINE_HORIZONTAL_PADDING,
                     });
             }
-            RenderedSpan::Elem(
-                widget::rich_text([code_span]).into(),
-                Emp::NonEmpty,
-                VSCODE_INLINE_OPTICAL_GAP,
-            )
+            RenderedSpan::Spans(vec![code_span])
         } else {
             let mut span = widget::span(code)
                 .size(size)
@@ -1146,7 +1273,7 @@ where
         children: Vec<DomRef<'_>>,
         data: ChildData,
     ) -> RenderedSpan<'a, M, T> {
-        let mut column = Vec::new();
+        let mut column: Vec<(RenderedSpan<'a, M, T>, BlockSpacing)> = Vec::new();
         let mut row = RenderedSpan::None;
 
         for item in self.significant_children(&children) {
@@ -1158,32 +1285,22 @@ where
                 if !row.is_empty() {
                     let mut old_row = RenderedSpan::None;
                     std::mem::swap(&mut row, &mut old_row);
-                    column.push(old_row);
+                    column.push((old_row, self.paragraph_block_spacing()));
                 }
-                column.push(element);
+                column.push((
+                    element,
+                    self.block_spacing_for_tag(item.tag_name().unwrap_or("div")),
+                ));
             } else {
                 row = row + element;
             }
         }
 
         if !row.is_empty() {
-            column.push(row);
+            column.push((row, self.paragraph_block_spacing()));
         }
 
-        if column.is_empty() {
-            RenderedSpan::None
-        } else if column.len() == 1 {
-            column.into_iter().next().unwrap()
-        } else {
-            widget::column(
-                column
-                    .into_iter()
-                    .filter(|n| !n.is_empty())
-                    .map(RenderedSpan::render),
-            )
-            .spacing(self.paragraph_spacing.unwrap_or(5.0))
-            .into()
-        }
+        self.stack_rendered_blocks(column)
     }
 }
 
@@ -1192,13 +1309,12 @@ where
     <T as widget::button::Catalog>::Class<'a>: From<widget::button::StyleFn<'a, T>>,
 {
     fn render_from_block_cache(&mut self) -> Element<'a, M, T> {
-        let spacing = self.paragraph_spacing.unwrap_or(5.0);
         let state: &'a MarkState = self.state;
         let cache = match &state.cache {
             Some(cache) => cache,
             None => return widget::Column::new().into(),
         };
-        let mut column = widget::Column::new().spacing(spacing).width(Length::Fill);
+        let mut blocks: Vec<(Element<'a, M, T>, BlockSpacing)> = Vec::new();
         let mut index = 0;
         while index < cache.len() {
             let block_id = cache.block_id(index);
@@ -1247,11 +1363,14 @@ where
                     }
                 }
                 let badge_row: Element<'a, M, T> = row.width(Length::Shrink).into();
-                column = column.push(if let Some(align) = block_data.alignment {
-                    Self::stack_align_in_viewport(badge_row, align)
-                } else {
-                    badge_row
-                });
+                blocks.push((
+                    if let Some(align) = block_data.alignment {
+                        Self::stack_align_in_viewport(badge_row, align)
+                    } else {
+                        badge_row
+                    },
+                    self.paragraph_block_spacing(),
+                ));
                 continue;
             }
 
@@ -1288,20 +1407,26 @@ where
                 continue;
             }
             let element = span.render();
-            column = column.push(if let Some(align) = block_data.alignment {
-                if center_wrapper_fragment {
-                    element
+            blocks.push((
+                if let Some(align) = block_data.alignment {
+                    if center_wrapper_fragment {
+                        element
+                    } else {
+                        Self::stack_align_in_viewport(
+                            widget::container(element).width(Length::Shrink).into(),
+                            align,
+                        )
+                    }
                 } else {
-                    Self::stack_align_in_viewport(
-                        widget::container(element).width(Length::Shrink).into(),
-                        align,
-                    )
-                }
-            } else {
-                element
-            });
+                    element
+                },
+                cache
+                    .entry(index - 1)
+                    .map(|entry| self.block_spacing_for_cached_block(entry))
+                    .unwrap_or_default(),
+            ));
         }
-        column.into()
+        self.stack_block_elements(blocks)
     }
 
     fn fragment_is_shield_paragraph(fragment: &HtmlFragment) -> bool {
@@ -1410,10 +1535,14 @@ where
     }
 
     fn render_fenced_code_block(&self, block: &'a CachedCodeBlock) -> RenderedSpan<'a, M, T> {
-        if let Some(lines) = block.markdown_items.iter().find_map(|item| match item {
-            markdown::Item::CodeBlock { lines, .. } => Some(lines.as_slice()),
-            _ => None,
-        }) {
+        if block.complete
+            && let Some(lines) = block.markdown_items.as_ref().and_then(|items| {
+                items.iter().find_map(|item| match item {
+                    markdown::Item::CodeBlock { lines, .. } => Some(lines.as_slice()),
+                    _ => None,
+                })
+            })
+        {
             let settings = self.markdown_code_settings();
             return self.wrap_fenced_code_container(self.fenced_code_inner(lines, &settings));
         }
@@ -1672,7 +1801,8 @@ mod render_tests {
         let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
         let debug = format!("{rendered:?}");
         assert!(
-            !debug.contains("The problem with being faster than light is that you live in darkness"),
+            !debug
+                .contains("The problem with being faster than light is that you live in darkness"),
             "expected separate paragraph blocks inside blockquote, got: {debug}"
         );
         assert!(
@@ -1755,8 +1885,8 @@ mod render_tests {
             "expected punctuation to remain outside code: {debug}"
         );
         assert!(
-            matches!(rendered, RenderedSpan::Elem(_, _, gap) if gap > 0.0),
-            "expected inline code to keep a non-zero optical gap, got {debug}"
+            matches!(rendered, RenderedSpan::Spans(_)),
+            "expected inline code to stay in the same rich_text flow, got {debug}"
         );
     }
 
@@ -1878,6 +2008,28 @@ mod render_tests {
         assert!(
             matches!(rendered, RenderedSpan::Elem(_, _, gap) if (gap - KBD_INLINE_OPTICAL_GAP).abs() < f32::EPSILON),
             "expected kbd to use the inline optical gap, got {debug}"
+        );
+    }
+
+    #[cfg(feature = "mermaid")]
+    #[test]
+    fn mermaid_code_block_inside_html_fragment_renders_svg_widget() {
+        let fragment = HtmlFragment::from_html(
+            "<pre><code class=\"language-mermaid\">flowchart LR\nA[RaTeX] --> B[StriMD]\n</code></pre>",
+        );
+        let state = MarkState::from_blocks(&[]);
+        let mut widget = MarkWidget::<(), iced::Theme>::new(&state);
+        let rendered = widget.render_fragment_roots(&fragment, ChildData::default());
+        let rendered_tag = rendered.render().as_widget().tag();
+        let expected_svg: iced::Element<'_, ()> =
+            widget::svg(iced::widget::svg::Handle::from_memory(
+                b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>".as_slice(),
+            ))
+            .into();
+        let expected_svg_tag = expected_svg.as_widget().tag();
+        assert!(
+            rendered_tag == expected_svg_tag,
+            "expected mermaid code block to render as SVG widget"
         );
     }
 

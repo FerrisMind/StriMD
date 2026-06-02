@@ -58,11 +58,13 @@ pub fn latex_to_svg(latex: &str, _display: bool) -> Result<SvgArtifact, RenderEr
     let lbox = layout(&ast, &LayoutOptions::default());
     let dl = to_display_list(&lbox);
 
-    let mut opts = SvgOptions::default();
-    opts.embed_glyphs = true;
-    // Slightly below default 40 — final size is matched to iced `text_size` at draw time.
-    opts.font_size = if _display { 28.0 } else { 20.0 };
-    opts.padding = if _display { 8.0 } else { 2.0 };
+    let opts = SvgOptions {
+        embed_glyphs: true,
+        // Slightly below default 40 — final size is matched to iced `text_size` at draw time.
+        font_size: if _display { 28.0 } else { 20.0 },
+        padding: if _display { 8.0 } else { 2.0 },
+        ..SvgOptions::default()
+    };
 
     let svg = render_to_svg(&dl, &opts);
     if !svg.contains("<svg") {
