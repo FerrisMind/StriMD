@@ -59,7 +59,7 @@ pub struct StreamUpdate {
     pub reset: bool,
 }
 
-/// Append-only streaming Markdown document backed by vendored mdstream.
+/// Append-only streaming Markdown document backed by [mdstream](https://crates.io/crates/mdstream).
 #[derive(Debug)]
 pub struct StreamDocument {
     stream: MdStream,
@@ -82,7 +82,6 @@ impl StreamDocument {
             adapter: PulldownAdapter::new(PulldownAdapterOptions {
                 pulldown: parse_options.pulldown,
                 prefer_display_for_pending: prefer_display,
-                gfm_extended_autolinks: options.profile.uses_gfm_extensions(),
             }),
             blocks: Vec::new(),
             block_index: HashMap::new(),

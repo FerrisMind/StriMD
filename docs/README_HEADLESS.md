@@ -1,6 +1,6 @@
 # StriMD (headless)
 
-Headless builds use `default-features = false` with `no_iced` plus `static` and/or `stream`.
+Headless builds use `default-features = false` with `no_iced` plus `static` and/or `stream`. For the full headless stack (static + streaming + harness parity), enable all three: `features = ["no_iced", "static", "stream"]`.
 
 ## Static preview and HTML export
 

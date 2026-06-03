@@ -318,6 +318,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "manual HTML probe; not part of CI"]
     fn print_math_events() {
         let source1 = "$$\\frac{1}{2}$$";
         println!("--- source1: {source1:?} ---");

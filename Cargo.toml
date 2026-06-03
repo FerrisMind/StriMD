@@ -2,10 +2,7 @@
 name = "strimd"
 version = "1.0.0-dev"
 edition = "2024"
-authors = [
-    "Mrmayman <navneetkrishna22@gmail.com>",
-    "FerrisMind <ferrismindrust@outlook.com>",
-]
+authors = ["FerrisMind <ferrismindrust@outlook.com>"]
 description = "StriMD — HTML/Markdown renderer for iced with headless static and streaming modes"
 license = "Apache-2.0"
 repository = "https://github.com/FerrisMind/strimd"
@@ -15,8 +12,9 @@ keywords = ["gui", "iced", "markdown", "html", "renderer", "strimd", "streaming"
 categories = ["gui"]
 
 [dependencies]
-bitflags = "2"
-pulldown-cmark = "0.13"
+bitflags = { version = "2", default-features = false, features = ["std"] }
+# `html` only (not `getopts` CLI); used by tests via `pulldown_cmark::html`.
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 
 # Minimal iced surface (no iced defaults): renderers, executor, widgets for MarkWidget.
 # x11 / wayland are wired through `_iced_backend`.
@@ -28,42 +26,42 @@ iced = { version = "0.14", optional = true, default-features = false, features =
     "markdown",
     "highlighter",
 ] }
-html5ever = { version = "0.36", optional = true }
-markup5ever_rcdom = { version = "0.36", optional = true }
-lol_html = { version = "2", optional = true }
-mdstream = { path = "../mdstream/mdstream", optional = true }
-ratex-parser = { path = "../RaTeX/crates/ratex-parser", optional = true }
-ratex-layout = { path = "../RaTeX/crates/ratex-layout", optional = true }
-ratex-svg = { path = "../RaTeX/crates/ratex-svg", optional = true, features = [
+html5ever = { version = "0.36", optional = true, default-features = false }
+markup5ever_rcdom = { version = "0.36", optional = true, default-features = false }
+lol_html = { version = "2", optional = true, default-features = false }
+mdstream = { version = "0.2", optional = true, default-features = false }
+ratex-parser = { version = "0.1.11", optional = true, default-features = false }
+ratex-layout = { version = "0.1.11", optional = true, default-features = false }
+ratex-svg = { version = "0.1.11", optional = true, default-features = false, features = [
     "standalone",
     "embed-fonts",
 ] }
-mermaid-rs-renderer = { path = "../mermaid-rs-renderer", default-features = false, optional = true }
+mermaid-rs-renderer = { version = "0.2.2", default-features = false, optional = true }
 
 [dev-dependencies]
 open = "5"
-rfd = "0.17.2"
-tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
-reqwest = { version = "0.13", features = ["json", "stream"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-futures = "0.3"
-resvg = "0.45"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
-tracing-tracy = "0.11.4"
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
+tokio = { version = "1", default-features = false, features = ["rt", "sync", "time", "macros"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls", "charset"] }
+serde = { version = "1", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1", default-features = false, features = ["std"] }
+futures = { version = "0.3", default-features = false, features = ["std"] }
+resvg = { version = "0.45", default-features = false }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter"] }
+tracing-tracy = { version = "0.11.4", default-features = false }
 eframe = { version = "0.29", default-features = false, features = [
     "default_fonts",
     "glow",
     "x11",
     "wayland",
 ] }
-egui = "0.29"
+egui = { version = "0.29", default-features = false, features = ["default_fonts"] }
 
 [features]
-default = ["_iced_backend", "stream", "iced/image", "iced/tokio"]
+default = ["_iced_backend", "stream"]
 
-# Supported public features (stable contract)
+# Supported public features (stable contract) — only these three for integrators.
 no_iced = []
 stream = ["dep:mdstream", "mdstream/pulldown"]
 static = ["dep:html5ever"]
@@ -82,19 +80,16 @@ _iced_backend = [
     "iced/x11",
     "iced/wayland",
     "iced/svg",
+    "iced/image",
+    "iced/tokio",
     "math",
     "mermaid",
 ]
 _html_preprocess = ["dep:lol_html"]
 _rcdom_compat = ["dep:markup5ever_rcdom"]
 
-# Backward-compatible aliases (pulldown-only; comrak removed in 1.0)
+# Backward-compatible alias (pulldown-only; comrak removed in 1.0)
 markdown = ["static"]
-iced-wgpu = ["iced/wgpu"]
-iced-tiny-skia = ["iced/tiny-skia"]
-iced-tokio = ["iced/tokio"]
-iced-wayland = ["iced/wayland"]
-iced-windowing = ["iced/x11", "iced/wayland"]
 
 [[example]]
 name = "hello"
@@ -110,11 +105,11 @@ required-features = ["_iced_backend"]
 
 [[example]]
 name = "image"
-required-features = ["_iced_backend", "iced/image", "iced/tokio"]
+required-features = ["_iced_backend"]
 
 [[example]]
 name = "large_readme"
-required-features = ["_iced_backend", "iced/image", "iced/tokio"]
+required-features = ["_iced_backend"]
 
 [[example]]
 name = "static_export"
@@ -134,10 +129,18 @@ required-features = ["no_iced", "static", "stream"]
 
 [[example]]
 name = "llm_chat"
-required-features = ["_iced_backend", "stream", "iced/tokio"]
+required-features = ["_iced_backend", "stream"]
 
 [[example]]
 name = "math_mermaid"
+required-features = ["_iced_backend"]
+
+[[example]]
+name = "profile_llm_chat"
+required-features = ["_iced_backend", "stream"]
+
+[[example]]
+name = "profile_static_mark"
 required-features = ["_iced_backend"]
 
 [profile.profiling]

@@ -81,7 +81,6 @@ cargo test --features stream --test stream_parity
 # --- Explicit alias features ---
 run_combo "static + stream (no iced flag)" --features static,stream
 run_combo "markdown alias (static)" --features markdown
-run_combo "iced-windowing alias on default" --features iced-windowing
 
 # --- Invalid combinations (compile_error guards) ---
 expect_fail "no features at all" --no-default-features

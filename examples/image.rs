@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 
 use iced::{
     Element, Length, Task,
-    advanced::image::Handle,
     widget::{self, image, text_editor::Content},
 };
 use strimd::{MarkState, MarkWidget};
@@ -29,11 +28,17 @@ enum Message {
     ImageDownloaded(Result<Image, String>),
 }
 
+#[derive(Clone)]
+struct CachedImage {
+    handle: image::Handle,
+    intrinsic_size: Option<(f32, f32)>,
+}
+
 struct App {
     state: MarkState,
     editor: Content,
 
-    images: HashMap<String, image::Handle>,
+    images: HashMap<String, CachedImage>,
     images_in_progress: HashSet<String>,
 }
 
@@ -52,11 +57,20 @@ impl App {
             }
             Message::ImageDownloaded(res) => match res {
                 Ok(image) => {
-                    // Note: Ignoring `image.is_svg` for now.
-                    // See the `large_readme.rs` example for how
-                    // to handle SVG images.
-                    self.images
-                        .insert(image.url, Handle::from_bytes(image.bytes));
+                    if image.is_svg {
+                        eprintln!(
+                            "SVG skipped in `image` example (see `large_readme` for SVG): {}",
+                            image.url
+                        );
+                    } else {
+                        self.images.insert(
+                            image.url,
+                            CachedImage {
+                                handle: image::Handle::from_bytes(image.bytes),
+                                intrinsic_size: image.intrinsic_size,
+                            },
+                        );
+                    }
                 }
                 Err(err) => {
                     eprintln!("Couldn't download image: {err}");
@@ -66,7 +80,6 @@ impl App {
         Task::none()
     }
 
-    #[must_use]
     fn reparse(&mut self) -> Task<Message> {
         self.state = MarkState::with_html_and_markdown(&self.editor.text());
         self.download_images()
@@ -103,11 +116,27 @@ impl App {
                         // - Usse the same logic elsewhere
 
                         if let Some(image) = self.images.get(info.url).cloned() {
-                            let mut img = widget::image(image);
-                            if let Some(w) = info.width {
+                            let mut width = info.width;
+                            let mut height = info.height;
+                            if let Some((intrinsic_w, intrinsic_h)) = image.intrinsic_size
+                                && intrinsic_w > 0.0
+                                && intrinsic_h > 0.0
+                            {
+                                match (width, height) {
+                                    (Some(w), None) => {
+                                        height = Some(w * intrinsic_h / intrinsic_w);
+                                    }
+                                    (None, Some(h)) => {
+                                        width = Some(h * intrinsic_w / intrinsic_h);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            let mut img = widget::image(image.handle);
+                            if let Some(w) = width {
                                 img = img.width(w);
                             }
-                            if let Some(h) = info.height {
+                            if let Some(h) = height {
                                 img = img.height(h);
                             }
                             img.into()

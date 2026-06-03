@@ -98,7 +98,7 @@ The default **iced** backend still renders HTML via [`html5ever`](https://crates
 and `MarkWidget`. New **headless** APIs parse Markdown into backend-agnostic
 [`Document`](https://docs.rs/strimd/latest/strimd/struct.Document.html) /
 [`StreamDocument`](https://docs.rs/strimd/latest/strimd/struct.StreamDocument.html)
-blocks using **pulldown-cmark** and vendored **mdstream** for streaming.
+blocks using **pulldown-cmark** and **[mdstream](https://crates.io/crates/mdstream)** for streaming.
 
 ## Supported Crate Features (public contract)
 
@@ -132,14 +132,12 @@ See [docs/API.md](docs/API.md) for the public API reference, [docs/MIGRATION.md]
 
 These exist for migration and may change without notice:
 
-- `_iced_backend` — default iced renderer (on by default)
+- `_iced_backend` — default iced renderer (on by default; bundles windowing, images, tokio, math, mermaid)
 - `_html_preprocess` — optional `lol_html` rewrite layer
 - `_rcdom_compat` — `markup5ever_rcdom` bridge for migration parity tests only (not used by default iced backend)
-
-## Iced passthrough features
-
 - `markdown` — alias for `static` (pulldown HTML export)
-- `iced-wgpu`, `iced-tiny-skia`, `iced-tokio`, `iced-windowing` — forwarded to `iced`
+
+Do not enable `iced/*` or other internal flags in downstream `Cargo.toml`; use `default` for GUI or the three public features above for headless.
 
 ## TODO
 

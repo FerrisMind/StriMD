@@ -20,7 +20,7 @@ cargo check --no-default-features --features no_iced,static
 echo "== headless stream =="
 cargo check --no-default-features --features no_iced,stream
 
-echo "== headless static + stream =="
+echo "== headless static + stream (full headless contract) =="
 cargo check --no-default-features --features no_iced,static,stream
 
 echo "== static + stream (pulldown) =="

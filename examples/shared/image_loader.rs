@@ -11,7 +11,6 @@ use reqwest::Client;
 pub struct Image {
     pub bytes: Vec<u8>,
     pub url: String,
-    #[allow(unused)]
     pub is_svg: bool,
     pub intrinsic_size: Option<(f32, f32)>,
 }

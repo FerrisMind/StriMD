@@ -1,8 +1,8 @@
 # StriMD public API
 
-This document describes the **stable public contract** for StriMD integrators. User-facing Cargo features: `no_iced`, `static`, `stream`, and optional `math` / `mermaid` for iced rendering.
+This document describes the **stable public contract** for StriMD integrators. The only user-facing Cargo features are `no_iced`, `static`, and `stream`.
 
-Implementation features (`_iced_backend`, `_html_preprocess`, `_rcdom_compat`) are migration internals and may change without notice.
+Implementation features (`_iced_backend`, `math`, `mermaid`, `_html_preprocess`, `_rcdom_compat`) are migration internals and may change without notice. Default GUI builds enable math and mermaid through `_iced_backend`; do not list `iced/*` passthrough flags in downstream manifests.
 
 ## Cargo features
 
@@ -11,8 +11,8 @@ Implementation features (`_iced_backend`, `_html_preprocess`, `_rcdom_compat`) a
 | `no_iced` | `default-features = false` | Headless builds without iced/GPU |
 | `static` | — | `Document::parse`, `Document::to_html()`, `HtmlFragment` |
 | `stream` | — | `StreamDocument`, `StreamPatch`, `StreamOptions` |
-| `math` | `_iced_backend` (on by default) | Display/inline LaTeX via [RaTeX](https://github.com/ratex-org/RaTeX) → `widget::svg` |
-| `mermaid` | `_iced_backend` (on by default) | ` ```mermaid ` fences via `mermaid-rs-renderer` → `widget::svg` |
+
+Full headless stack (static export + streaming + egui harness parity): enable all three together.
 
 Typical headless dependency:
 
@@ -130,22 +130,14 @@ Streaming UI:
 }
 ```
 
-### Math and Mermaid (iced only)
+### Math and Mermaid (default iced backend)
 
-With default features, `math` and `mermaid` are enabled. StriMD renders:
+With `default-features = true`, the `_iced_backend` bundle enables LaTeX and Mermaid rendering:
 
 - **Display math** (`$$…$$` / `MathBlock`) and **inline math** (`$…$`, DOM `span.math-inline`) via RaTeX → self-contained SVG (`embed-fonts`).
 - **Mermaid** fenced blocks (` ```mermaid `) via `mermaid-rs-renderer` when the fence is complete (streaming shows source until the closing fence).
 
-Disable to shrink binaries:
-
-```toml
-strimd = { version = "1.0", default-features = true, features = ["math", "mermaid"] }
-# headless / no diagrams:
-# strimd = { version = "1.0", default-features = false, features = ["no_iced", "static"] }
-```
-
-Low-level SVG helpers (tests, custom UI):
+Low-level SVG helpers (crate tests / custom UI; not part of the three-feature public contract):
 
 ```rust
 #[cfg(feature = "math")]
@@ -155,7 +147,7 @@ use strimd::render::latex_to_svg;
 use strimd::render::mermaid_to_svg;
 ```
 
-`Document::to_html()` still emits placeholder `<span class="math">` / diagram stubs; full SVG export is not in scope for these features.
+`Document::to_html()` still emits placeholder `<span class="math">` / diagram stubs; full SVG export is not in scope for headless builds.
 
 ## HTML fragments
 
