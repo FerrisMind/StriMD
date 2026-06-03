@@ -24,7 +24,7 @@ pub async fn download_image(url: String, search_roots: Vec<PathBuf>) -> Result<I
         return Err(format!("local image not found: {url}"));
     }
 
-    static CLIENT: LazyLock<Client> = LazyLock::new(|| Client::new());
+    static CLIENT: LazyLock<Client> = LazyLock::new(Client::new);
     let response = CLIENT
         .get(&url)
         .send()

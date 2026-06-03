@@ -269,6 +269,7 @@ impl MarkState {
             UpdateMsgKind::DetailsToggle(id, open) => {
                 self.dropdown_state.insert(id, open);
             }
+            UpdateMsgKind::CopyToClipboard(_) => {}
         }
     }
 

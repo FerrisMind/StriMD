@@ -11,14 +11,18 @@ use iced::{
     widget::{self, button, image, svg},
 };
 use strimd::{MarkState, MarkWidget, UpdateMsg};
+use tracing::{debug_span, info_span};
 
 use crate::image_loader::Image;
 
 #[path = "shared/image_loader.rs"]
 mod image_loader;
+#[path = "shared/profiling.rs"]
+mod profiling;
 
 fn main() -> iced::Result {
-    let mut args = env::args().skip(1);
+    let profiling = profiling::init_from_env("large_readme=info,strimd=info");
+    let mut args = profiling.positional.into_iter();
     let initial_page = args
         .next()
         .as_deref()
@@ -60,6 +64,19 @@ enum Message {
     },
 }
 
+impl Message {
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::UpdateState(_) => "update_state",
+            Self::OpenLink(_) => "open_link",
+            Self::ChangePage(_) => "change_page",
+            Self::OpenLocalFile => "open_local_file",
+            Self::LocalFilePicked(_) => "local_file_picked",
+            Self::ImageDownloaded { .. } => "image_downloaded",
+        }
+    }
+}
+
 struct App {
     page: Page,
     section_marker: Option<String>,
@@ -85,6 +102,7 @@ struct SvgImage {
 
 impl App {
     fn update(&mut self, msg: Message) -> Task<Message> {
+        let _span = debug_span!("large_readme.update", message = msg.kind()).entered();
         match msg {
             Message::UpdateState(msg) => self.state.update(msg),
             Message::OpenLink(link) => {
@@ -166,10 +184,16 @@ impl App {
     }
 
     fn view<'a>(&'a self) -> Element<'a, Message> {
+        let _span = debug_span!(
+            "large_readme.view",
+            page = %self.page,
+            custom_source = self.custom_source.is_some()
+        )
+        .entered();
         let source_label = self.source_label();
         let page_selector = widget::row![
             "Page:",
-            widget::pick_list(Page::ALL, Some(self.page), |s| Message::ChangePage(s))
+            widget::pick_list(Page::ALL, Some(self.page), Message::ChangePage)
         ]
         .align_y(Alignment::Center)
         .spacing(10);
@@ -186,7 +210,7 @@ impl App {
                 page_selector,
                 widget::rule::horizontal(2),
                 MarkWidget::new(&self.state)
-                    .on_updating_state(|msg| Message::UpdateState(msg))
+                    .on_updating_state(Message::UpdateState)
                     .on_clicking_link(Message::OpenLink)
                     .on_drawing_image(|info| self.draw_image(info)),
             ]
@@ -197,6 +221,13 @@ impl App {
     }
 
     fn reload(&mut self) -> Task<Message> {
+        let _span = info_span!(
+            "large_readme.reload",
+            page = %self.page,
+            custom_source = self.custom_source.is_some(),
+            generation = self.source_generation
+        )
+        .entered();
         self.source_generation = self.source_generation.wrapping_add(1);
         self.images_normal.clear();
         self.images_svg.clear();
@@ -256,9 +287,15 @@ impl App {
     }
 
     fn download_images(&mut self) -> Task<Message> {
+        let links: Vec<_> = self.state.find_image_links().into_iter().collect();
+        let _span = info_span!(
+            "large_readme.download_images",
+            links = links.len(),
+            generation = self.source_generation
+        )
+        .entered();
         let roots = self.image_search_roots();
         let generation = self.source_generation;
-        let links: Vec<_> = self.state.find_image_links().into_iter().collect();
         Task::batch(links.into_iter().map(move |url| {
             if self.images_in_progress.insert(url.clone()) {
                 Task::perform(

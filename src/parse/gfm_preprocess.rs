@@ -142,7 +142,7 @@ fn www_domain_end(rest: &str) -> Option<usize> {
 fn www_path_end(domain: &str, tail: &str) -> usize {
     let mut len = 0usize;
     for ch in tail.chars() {
-        if ch.is_whitespace() || ch == '<' {
+        if ch.is_whitespace() || ch == '<' || "。．，、？！：；（）-【】「」『』〈〉《》".contains(ch) {
             break;
         }
         len += ch.len_utf8();
@@ -155,7 +155,7 @@ fn trim_trailing_punctuation(link: &str) -> &str {
     let mut end = link.len();
     while end > 0 {
         let ch = link[..end].chars().last().unwrap();
-        if "?!.:,*_~".contains(ch) {
+        if "?!.:,*_~。．，、？！：；（）-【】「」『』〈〉《》".contains(ch) {
             end -= ch.len_utf8();
         } else {
             break;
@@ -284,5 +284,12 @@ mod tests {
         assert!(out.contains("](README.pt-BR.md)"));
         assert!(!out.contains("http://README.pt-BR.md"));
         assert!(!out.contains("http://readme.pt-br.md"));
+    }
+
+    #[test]
+    fn trailing_cjk_punctuation_is_excluded_from_www_link() {
+        let out = apply_gfm_extended_autolinks("Посети www.example.com。 или www.example.org，чтобы узнать больше。\n");
+        assert!(out.contains("<http://www.example.com>。"));
+        assert!(out.contains("<http://www.example.org>，"));
     }
 }

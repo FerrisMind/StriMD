@@ -13,6 +13,8 @@ use std::time::Instant;
 use iced::{Element, Theme};
 use strimd::{MarkState, MarkWidget, StreamDocument, StreamOptions};
 use tracing::{debug, info, info_span};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::Layer;
 
 fn main() {
     let mut chunk_words = 1usize;
@@ -21,6 +23,7 @@ fn main() {
     let mut rounds = 5usize;
     let mut source_path: Option<PathBuf> = None;
     let mut trace_enabled = false;
+    let mut tracy_enabled = false;
 
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -51,18 +54,26 @@ fn main() {
                 }
             }
             "--trace" => trace_enabled = true,
+            "--tracy" => tracy_enabled = true,
             _ => {}
         }
     }
 
-    if trace_enabled {
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| "profile_llm_chat=info".into()),
-            )
+    if trace_enabled || tracy_enabled {
+        let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| "profile_llm_chat=info".into());
+        let fmt_layer = tracing_subscriber::fmt::layer()
             .with_target(false)
-            .try_init();
+            .with_filter(env_filter.clone());
+        let subscriber = tracing_subscriber::registry().with(fmt_layer);
+
+        if tracy_enabled {
+            let tracy_layer =
+                tracing_tracy::TracyLayer::default().with_filter(env_filter.clone());
+            subscriber.with(tracy_layer).init();
+        } else {
+            subscriber.init();
+        }
     }
 
     let source = source_path
@@ -126,6 +137,11 @@ fn main() {
                     debug!(render = total_renders, flush = total_flushes, "rendered widget");
                 }
             }
+        }
+
+        println!("=== FINAL BLOCKS FOR ROUND {} ===", round);
+        for block in stream.blocks() {
+            println!("Block #{} - kind: {:?}, content: {:?}", block.id.0, block.kind, block.content);
         }
     }
 

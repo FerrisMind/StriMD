@@ -80,10 +80,23 @@ pub struct UpdateMsg {
     pub(crate) kind: UpdateMsgKind,
 }
 
+impl UpdateMsg {
+    /// Checks if the message is a request to copy code/text to the clipboard.
+    #[must_use]
+    pub fn as_copy_to_clipboard(&self) -> Option<&str> {
+        match &self.kind {
+            UpdateMsgKind::CopyToClipboard(text) => Some(text),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum UpdateMsgKind {
     DetailsToggle(usize, bool),
+    CopyToClipboard(String),
 }
+
 
 type FClickLink<M> = Box<dyn Fn(String) -> M>;
 type FDrawImage<'a, M, T> = Box<dyn Fn(ImageInfo) -> Element<'static, M, T> + 'a>;

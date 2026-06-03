@@ -10,11 +10,14 @@ use iced::{
 };
 use std::time::Duration;
 use strimd::{MarkState, MarkWidget, StreamDocument, StreamOptions, Style, UpdateMsg};
+use tracing::{debug_span, info_span};
 
 #[path = "shared/chat_stream.rs"]
 mod chat_stream;
 #[path = "shared/openai_compat.rs"]
 mod openai_compat;
+#[path = "shared/profiling.rs"]
+mod profiling;
 
 use chat_stream::{ActiveStream, ChatStreamEvent, chunk_by_words, stream_subscription};
 use openai_compat::{ApiConfig, ChatMessage as ApiChatMessage};
@@ -65,6 +68,24 @@ enum Message {
     Stream(ChatStreamEvent),
 }
 
+impl Message {
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::BaseUrlChanged(_) => "base_url_changed",
+            Self::ApiKeyChanged(_) => "api_key_changed",
+            Self::ModelChanged(_) => "model_changed",
+            Self::PromptChanged(_) => "prompt_changed",
+            Self::ToggleSettings => "toggle_settings",
+            Self::Send => "send",
+            Self::SimulateTestMd => "simulate_test_md",
+            Self::CopyText(_) => "copy_text",
+            Self::FlushPending => "flush_pending",
+            Self::UpdateMark(_, _) => "update_mark",
+            Self::Stream(_) => "stream",
+        }
+    }
+}
+
 struct PendingDelta {
     msg_id: u64,
     text: String,
@@ -85,6 +106,7 @@ struct App {
 
 impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
+        let _span = debug_span!("llm_chat.update", message = message.kind()).entered();
         match message {
             Message::BaseUrlChanged(value) => self.base_url = value,
             Message::ApiKeyChanged(value) => self.api_key = value,
@@ -108,6 +130,7 @@ impl App {
     }
 
     fn send_prompt(&mut self) -> Task<Message> {
+        let _span = info_span!("llm_chat.send_prompt").entered();
         if self.busy {
             return Task::none();
         }
@@ -142,6 +165,7 @@ impl App {
     }
 
     fn simulate_test_md(&mut self) -> Task<Message> {
+        let _span = info_span!("llm_chat.simulate_test_md").entered();
         if self.busy {
             return Task::none();
         }
@@ -163,6 +187,12 @@ impl App {
     }
 
     fn handle_stream(&mut self, event: ChatStreamEvent) -> Task<Message> {
+        let event_kind = match &event {
+            ChatStreamEvent::Delta { .. } => "delta",
+            ChatStreamEvent::Done => "done",
+            ChatStreamEvent::Error { .. } => "error",
+        };
+        let _span = debug_span!("llm_chat.handle_stream", event = event_kind).entered();
         match event {
             ChatStreamEvent::Delta { msg_id, chunk } => {
                 self.buffer_delta(msg_id, &chunk);
@@ -218,6 +248,11 @@ impl App {
     }
 
     fn flush_pending_delta(&mut self) {
+        let _span = debug_span!(
+            "llm_chat.flush_pending_delta",
+            has_pending = self.pending_delta.is_some()
+        )
+        .entered();
         let Some(PendingDelta { msg_id, text }) = self.pending_delta.take() else {
             return;
         };
@@ -274,6 +309,12 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
+        let _span = debug_span!(
+            "llm_chat.view",
+            messages = self.messages.len(),
+            busy = self.busy
+        )
+        .entered();
         let settings = if self.settings_open {
             column![
                 text("API settings").size(16),
@@ -420,6 +461,14 @@ fn app_subscription(app: &App) -> Subscription<Message> {
 }
 
 fn main() -> iced::Result {
+    let profiling = profiling::init_from_env("llm_chat=info,strimd=info");
+    if !profiling.positional.is_empty() {
+        eprintln!(
+            "Ignoring unsupported llm_chat args: {}",
+            profiling.positional.join(" ")
+        );
+    }
+
     iced::application(
         || App {
             base_url: DEFAULT_BASE_URL.to_string(),

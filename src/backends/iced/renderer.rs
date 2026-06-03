@@ -1140,7 +1140,11 @@ where
                 }) {
                     let settings = self.markdown_code_settings();
                     return self
-                        .wrap_fenced_code_container(self.fenced_code_inner(lines, &settings));
+                        .wrap_fenced_code_container(
+                            self.fenced_code_inner(lines, &settings),
+                            trimmed,
+                            lang.as_deref(),
+                        );
                 }
             }
         }
@@ -1210,16 +1214,40 @@ where
         }
     }
 
-    fn wrap_fenced_code_container(&self, inner: Element<'a, M, T>) -> RenderedSpan<'a, M, T> {
+    fn wrap_fenced_code_container(
+        &self,
+        inner: Element<'a, M, T>,
+        code: &str,
+        _language: Option<&str>,
+    ) -> RenderedSpan<'a, M, T> {
         let settings = self.markdown_code_settings();
         let shell = widget::container(widget::container(inner).padding(settings.code_size))
             .width(Length::Fill)
             .padding(settings.code_size / 4.0)
             .class(<T as markdown::Catalog>::code_block());
-        let element = if let Some(draw) = &self.fn_drawing_pre_block {
-            draw(shell.into())
+
+        let element: Element<'a, M, T> = if let Some(update) = &self.fn_update {
+            let umsg = UpdateMsg {
+                kind: UpdateMsgKind::CopyToClipboard(code.to_string()),
+            };
+            let copy_btn = widget::button(widget::text("📋").size(12))
+                .padding(Padding::new(4.0))
+                .on_press(update(umsg));
+
+            let copy_overlay = widget::container(copy_btn)
+                .width(Length::Fill)
+                .align_x(iced::alignment::Horizontal::Right)
+                .padding(Padding::new(8.0));
+
+            widget::stack![shell, copy_overlay].into()
         } else {
             shell.into()
+        };
+
+        let element = if let Some(draw) = &self.fn_drawing_pre_block {
+            draw(element)
+        } else {
+            element
         };
         element.into()
     }
@@ -1544,7 +1572,11 @@ where
             })
         {
             let settings = self.markdown_code_settings();
-            return self.wrap_fenced_code_container(self.fenced_code_inner(lines, &settings));
+            return self.wrap_fenced_code_container(
+                self.fenced_code_inner(lines, &settings),
+                &block.code,
+                block.language.as_deref(),
+            );
         }
 
         let size = self.text_size;
