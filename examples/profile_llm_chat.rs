@@ -13,14 +13,15 @@ use std::time::Instant;
 use iced::{Element, Theme};
 use strimd::{MarkState, MarkWidget, StreamDocument, StreamOptions};
 use tracing::{debug, info, info_span};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_subscriber::Layer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 fn main() {
     let mut chunk_words = 1usize;
     let mut render_every = 1usize;
     let mut flush_every_chunks = 1usize;
     let mut rounds = 5usize;
+    let mut dump_final_blocks = false;
     let mut source_path: Option<PathBuf> = None;
     let mut trace_enabled = false;
     let mut tracy_enabled = false;
@@ -48,6 +49,7 @@ fn main() {
                     rounds = value.parse().unwrap_or(rounds);
                 }
             }
+            "--dump-final-blocks" => dump_final_blocks = true,
             "--source" => {
                 if let Some(value) = args.next() {
                     source_path = Some(PathBuf::from(value));
@@ -68,8 +70,7 @@ fn main() {
         let subscriber = tracing_subscriber::registry().with(fmt_layer);
 
         if tracy_enabled {
-            let tracy_layer =
-                tracing_tracy::TracyLayer::default().with_filter(env_filter.clone());
+            let tracy_layer = tracing_tracy::TracyLayer::default().with_filter(env_filter.clone());
             subscriber.with(tracy_layer).init();
         } else {
             subscriber.init();
@@ -113,8 +114,15 @@ fn main() {
 
             if buffered_chunks >= flush_every_chunks.max(1) || index + 1 == chunks.len() {
                 let flush_bytes = pending.len();
-                let update = stream.append(&pending);
-                state.apply_stream_update(&stream, &update);
+                let update = {
+                    let _span = info_span!("stream_append", round, chunk_index = index).entered();
+                    stream.append(&pending)
+                };
+                {
+                    let _span = info_span!("state_apply_stream_update", round, chunk_index = index)
+                        .entered();
+                    state.apply_stream_update(&stream, &update);
+                }
                 total_appends += 1;
                 total_flushes += 1;
                 total_flushed_bytes += flush_bytes;
@@ -131,17 +139,30 @@ fn main() {
                 if (total_flushes - 1).is_multiple_of(render_every.max(1))
                     || index + 1 == chunks.len()
                 {
-                    let element: Element<'_, (), Theme> = MarkWidget::new(&state).into();
+                    let element: Element<'_, (), Theme> = {
+                        let _span =
+                            info_span!("widget_render", round, chunk_index = index).entered();
+                        MarkWidget::new(&state).into()
+                    };
                     black_box(element);
                     total_renders += 1;
-                    debug!(render = total_renders, flush = total_flushes, "rendered widget");
+                    debug!(
+                        render = total_renders,
+                        flush = total_flushes,
+                        "rendered widget"
+                    );
                 }
             }
         }
 
-        println!("=== FINAL BLOCKS FOR ROUND {} ===", round);
-        for block in stream.blocks() {
-            println!("Block #{} - kind: {:?}, content: {:?}", block.id.0, block.kind, block.content);
+        if dump_final_blocks {
+            println!("=== FINAL BLOCKS FOR ROUND {} ===", round);
+            for block in stream.blocks() {
+                println!(
+                    "Block #{} - kind: {:?}, content: {:?}",
+                    block.id.0, block.kind, block.content
+                );
+            }
         }
     }
 

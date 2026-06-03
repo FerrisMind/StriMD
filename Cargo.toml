@@ -139,3 +139,7 @@ required-features = ["_iced_backend", "stream", "iced/tokio"]
 [[example]]
 name = "math_mermaid"
 required-features = ["_iced_backend"]
+
+[profile.profiling]
+inherits = "release"
+debug = true

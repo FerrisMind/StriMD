@@ -94,7 +94,7 @@ impl<'a> DomRef<'a> {
     #[must_use]
     pub(crate) fn is_useless(&self) -> bool {
         self.text_contents()
-            .is_some_and(|text| text.trim().is_empty())
+            .is_some_and(|text| text_is_all_whitespace(text.as_ref()))
     }
 
     #[must_use]
@@ -230,6 +230,15 @@ impl<'a> DomRef<'a> {
             || lower.contains("shields.io/")
             || lower.contains("badge.svg")
             || lower.contains("/badge")
+    }
+}
+
+#[must_use]
+pub(crate) fn text_is_all_whitespace(text: &str) -> bool {
+    if text.is_ascii() {
+        text.as_bytes().iter().all(u8::is_ascii_whitespace)
+    } else {
+        text.chars().all(char::is_whitespace)
     }
 }
 

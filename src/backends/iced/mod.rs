@@ -9,7 +9,10 @@ mod structs;
 mod style;
 mod widgets;
 
-pub use code_fence::{fence_markdown_for_codeblock, iced_markdown_items_for_codeblock};
+pub use code_fence::{
+    fence_markdown_for_codeblock, iced_markdown_items_for_codeblock,
+    iced_markdown_lines_for_codeblock,
+};
 pub use legacy_document::{CodeBlock, MarkDocument, MarkSegment};
 pub use state::MarkState;
 pub use structs::{ImageInfo, MarkWidget, RubyMode, UpdateMsg};

@@ -1,13 +1,19 @@
 //! GFM extensions not provided by pulldown-cmark (extended autolinks, spec §6.9).
 
+use std::borrow::Cow;
+
 /// Rewrite `www.` / bare-email autolinks into bracketed `http` autolinks pulldown understands.
 #[must_use]
-pub fn apply_gfm_extended_autolinks(source: &str) -> String {
+pub fn apply_gfm_extended_autolinks(source: &str) -> Cow<'_, str> {
+    if !source.contains("www.") && !source.contains('@') {
+        return Cow::Borrowed(source);
+    }
+
     let mut out = String::with_capacity(source.len() + 32);
     for line in source.split_inclusive('\n') {
         out.push_str(&rewrite_line(line));
     }
-    out
+    Cow::Owned(out)
 }
 
 fn rewrite_line(line: &str) -> String {
@@ -142,7 +148,10 @@ fn www_domain_end(rest: &str) -> Option<usize> {
 fn www_path_end(domain: &str, tail: &str) -> usize {
     let mut len = 0usize;
     for ch in tail.chars() {
-        if ch.is_whitespace() || ch == '<' || "。．，、？！：；（）-【】「」『』〈〉《》".contains(ch) {
+        if ch.is_whitespace()
+            || ch == '<'
+            || "。．，、？！：；（）-【】「」『』〈〉《》".contains(ch)
+        {
             break;
         }
         len += ch.len_utf8();
@@ -288,7 +297,9 @@ mod tests {
 
     #[test]
     fn trailing_cjk_punctuation_is_excluded_from_www_link() {
-        let out = apply_gfm_extended_autolinks("Посети www.example.com。 или www.example.org，чтобы узнать больше。\n");
+        let out = apply_gfm_extended_autolinks(
+            "Посети www.example.com。 или www.example.org，чтобы узнать больше。\n",
+        );
         assert!(out.contains("<http://www.example.com>。"));
         assert!(out.contains("<http://www.example.org>，"));
     }

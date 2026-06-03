@@ -1,5 +1,7 @@
 //! Fenced code helpers: fence markdown reconstruction and iced syntax highlighting.
 
+use iced::widget::markdown;
+
 /// Normalizes a language tag for iced/syntect (shared by block cache and segment split).
 pub(crate) fn normalize_code_language(language: Option<&str>) -> Option<String> {
     let language = language.unwrap_or("").trim();
@@ -49,9 +51,23 @@ pub fn iced_markdown_items_for_codeblock(
     language: Option<&str>,
     code: &str,
 ) -> Vec<iced::widget::markdown::Item> {
-    use iced::widget::markdown;
     let fence = fence_markdown_for_codeblock(language, code);
     markdown::Content::parse(&fence).items().to_vec()
+}
+
+/// Extracts highlighted lines once so render passes can reuse cached [`markdown::Text`] values.
+#[must_use]
+pub fn iced_markdown_lines_for_codeblock(
+    language: Option<&str>,
+    code: &str,
+) -> Vec<markdown::Text> {
+    iced_markdown_items_for_codeblock(language, code)
+        .into_iter()
+        .find_map(|item| match item {
+            markdown::Item::CodeBlock { lines, .. } => Some(lines),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 fn wrapping_fence_len(open_fence_len: usize, body: &str) -> usize {

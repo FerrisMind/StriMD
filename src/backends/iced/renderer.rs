@@ -1112,11 +1112,9 @@ where
                     && let Some(svg) = block_cache
                         .and_then(|cache| cache.mermaid_svg(&text))
                         .or_else(|| {
-                            crate::render::mermaid_to_svg(&text)
-                                .ok()
-                                .map(|artifact| {
-                                    crate::html::block_cache::cached_svg_from_artifact(&artifact)
-                                })
+                            crate::render::mermaid_to_svg(&text).ok().map(|artifact| {
+                                crate::html::block_cache::cached_svg_from_artifact(&artifact)
+                            })
                         })
                 {
                     let max_w = 560.0_f32;
@@ -1127,24 +1125,21 @@ where
                 }
                 let trimmed = text.trim_end_matches('\n');
                 let items = block_cache
-                    .map(|cache| cache.code_markdown_items(lang.as_deref(), trimmed))
+                    .map(|cache| cache.code_markdown_lines(lang.as_deref(), trimmed))
                     .unwrap_or_else(|| {
-                        Rc::new(crate::backends::iced::iced_markdown_items_for_codeblock(
+                        Rc::new(crate::backends::iced::iced_markdown_lines_for_codeblock(
                             lang.as_deref(),
                             trimmed,
                         ))
                     });
-                if let Some(lines) = items.iter().find_map(|item| match item {
-                    markdown::Item::CodeBlock { lines, .. } => Some(lines.as_slice()),
-                    _ => None,
-                }) {
+                if !items.is_empty() {
                     let settings = self.markdown_code_settings();
-                    return self
-                        .wrap_fenced_code_container(
-                            self.fenced_code_inner(lines, &settings),
-                            trimmed,
-                            lang.as_deref(),
-                        );
+                    return self.wrap_fenced_code_container(
+                        self.fenced_code_inner(items.as_ref(), &settings),
+                        trimmed,
+                        None,
+                        lang.as_deref(),
+                    );
                 }
             }
         }
@@ -1218,6 +1213,7 @@ where
         &self,
         inner: Element<'a, M, T>,
         code: &str,
+        copy_payload: Option<std::sync::Arc<str>>,
         _language: Option<&str>,
     ) -> RenderedSpan<'a, M, T> {
         let settings = self.markdown_code_settings();
@@ -1228,7 +1224,9 @@ where
 
         let element: Element<'a, M, T> = if let Some(update) = &self.fn_update {
             let umsg = UpdateMsg {
-                kind: UpdateMsgKind::CopyToClipboard(code.to_string()),
+                kind: UpdateMsgKind::CopyToClipboard(
+                    copy_payload.unwrap_or_else(|| std::sync::Arc::from(code)),
+                ),
             };
             let copy_btn = widget::button(widget::text("📋").size(12))
                 .padding(Padding::new(4.0))
@@ -1564,23 +1562,19 @@ where
 
     fn render_fenced_code_block(&self, block: &'a CachedCodeBlock) -> RenderedSpan<'a, M, T> {
         if block.complete
-            && let Some(lines) = block.markdown_items.as_ref().and_then(|items| {
-                items.iter().find_map(|item| match item {
-                    markdown::Item::CodeBlock { lines, .. } => Some(lines.as_slice()),
-                    _ => None,
-                })
-            })
+            && let Some(lines) = block.highlighted_lines.as_deref()
         {
             let settings = self.markdown_code_settings();
             return self.wrap_fenced_code_container(
                 self.fenced_code_inner(lines, &settings),
-                &block.code,
+                block.code.as_ref(),
+                Some(std::sync::Arc::clone(&block.code)),
                 block.language.as_deref(),
             );
         }
 
         let size = self.text_size;
-        let code = block.code.clone();
+        let code = block.code.to_string();
         if let Some(draw) = &self.fn_drawing_pre_block {
             return draw(self.codeblock(code, size, false).render()).into();
         }
@@ -1590,44 +1584,50 @@ where
 
 impl<'a, M: Clone + 'static, T: widget::text::Catalog + 'a> MarkWidget<'a, M, T> {
     fn significant_children<'b>(&self, children: &[DomRef<'b>]) -> Vec<DomRef<'b>> {
-        let mut previous = vec![None; children.len()];
-        let mut next = vec![None; children.len()];
+        if children.len() <= 1 {
+            return children.to_vec();
+        }
 
-        let mut last_meaningful = None;
+        let mut meaningful_positions = Vec::with_capacity(children.len());
         for (index, child) in children.iter().copied().enumerate() {
-            previous[index] = last_meaningful;
             if !child.is_useless() {
-                last_meaningful = Some(index);
+                meaningful_positions.push(index);
             }
         }
 
-        let mut next_meaningful = None;
-        for (index, child) in children.iter().copied().enumerate().rev() {
-            next[index] = next_meaningful;
-            if !child.is_useless() {
-                next_meaningful = Some(index);
+        if meaningful_positions.is_empty() {
+            return Vec::new();
+        }
+        if meaningful_positions.len() == children.len() {
+            return children.to_vec();
+        }
+
+        let mut significant = Vec::with_capacity(children.len());
+        let mut next_meaningful = 0usize;
+        let mut previous_meaningful = None;
+
+        for (index, child) in children.iter().copied().enumerate() {
+            if meaningful_positions.get(next_meaningful).copied() == Some(index) {
+                significant.push(child);
+                previous_meaningful = Some(child);
+                next_meaningful += 1;
+                continue;
+            }
+
+            let following_meaningful = meaningful_positions
+                .get(next_meaningful)
+                .map(|&next| children[next]);
+            let preserve = matches!(
+                (previous_meaningful, following_meaningful),
+                (Some(prev), Some(next))
+                    if !prev.is_block_element() && !next.is_block_element()
+            );
+            if preserve {
+                significant.push(child);
             }
         }
 
-        children
-            .iter()
-            .copied()
-            .enumerate()
-            .filter_map(|(index, child)| {
-                if !child.is_useless() {
-                    return Some(child);
-                }
-                let preserve = matches!(
-                    (
-                        previous[index].map(|i| children[i]),
-                        next[index].map(|i| children[i])
-                    ),
-                    (Some(prev), Some(next))
-                        if !prev.is_block_element() && !next.is_block_element()
-                );
-                preserve.then_some(child)
-            })
-            .collect()
+        significant
     }
 }
 

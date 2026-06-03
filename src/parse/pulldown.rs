@@ -27,7 +27,7 @@ pub fn parse_blocks(
     let prepared = if profile.uses_gfm_extensions() {
         gfm_preprocess::apply_gfm_extended_autolinks(source)
     } else {
-        source.to_string()
+        source.into()
     };
     let parser = Parser::new_ext(&prepared, options.pulldown);
     let (events, ranges): (Vec<_>, Vec<_>) = parser
@@ -36,7 +36,7 @@ pub fn parse_blocks(
         .unzip();
 
     Ok(group_events_into_blocks(
-        &prepared,
+        prepared.as_ref(),
         events,
         ranges,
         options.raw_html,
@@ -315,5 +315,29 @@ mod tests {
                 .iter()
                 .any(|b| matches!(b.content, BlockContent::Html(_)))
         );
+    }
+
+    #[test]
+    fn print_math_events() {
+        let source1 = "$$\\frac{1}{2}$$";
+        println!("--- source1: {source1:?} ---");
+        let parser1 = pulldown_cmark::Parser::new_ext(
+            source1,
+            ParseProfile::GitHubPreview.pulldown_options(),
+        );
+        let mut html1 = String::new();
+        pulldown_cmark::html::push_html(&mut html1, parser1);
+        println!("HTML1: {html1}");
+
+        let source2 = "$$\n\\frac{1}{2}\n$$";
+        println!("--- source2: {source2:?} ---");
+        let parser2 = pulldown_cmark::Parser::new_ext(
+            source2,
+            ParseProfile::GitHubPreview.pulldown_options(),
+        );
+        let mut html2 = String::new();
+        pulldown_cmark::html::push_html(&mut html2, parser2);
+        println!("HTML2: {html2}");
+        panic!("force print");
     }
 }

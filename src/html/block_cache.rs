@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use pulldown_cmark::{Parser, html};
 
@@ -35,10 +36,10 @@ struct CodeMarkdownCacheKey {
 pub(crate) struct CachedCodeBlock {
     #[allow(dead_code)]
     pub(crate) language: Option<String>,
-    pub(crate) code: String,
+    pub(crate) code: Arc<str>,
     pub(crate) complete: bool,
-    /// Pre-parsed iced markdown items (highlighted lines for [`iced::widget::markdown::code_block`]).
-    pub(crate) markdown_items: Option<Rc<Vec<iced::widget::markdown::Item>>>,
+    /// Cached highlighted lines for [`iced::widget::markdown::code_block`]-style rendering.
+    pub(crate) highlighted_lines: Option<Rc<Vec<iced::widget::markdown::Text>>>,
 }
 
 /// Rasterizable SVG payload for math and Mermaid blocks.
@@ -74,7 +75,7 @@ pub(crate) struct BlockRenderCache {
     #[cfg(feature = "mermaid")]
     mermaid_cache: RefCell<MermaidCache>,
     code_markdown_cache:
-        RefCell<HashMap<CodeMarkdownCacheKey, Rc<Vec<iced::widget::markdown::Item>>>>,
+        RefCell<HashMap<CodeMarkdownCacheKey, Rc<Vec<iced::widget::markdown::Text>>>>,
     #[cfg(test)]
     compile_count: usize,
 }
@@ -238,13 +239,14 @@ impl BlockRenderCache {
             }
             BlockContent::Html(fragment) => CachedBlock::Fragment(fragment.clone()),
             BlockContent::Code { lang, complete } => {
-                let code = block.source.trim_end_matches('\n').to_string();
-                let markdown_items = complete.then(|| self.code_markdown_items(lang.as_deref(), &code));
+                let code = Arc::<str>::from(block.source.trim_end_matches('\n'));
+                let highlighted_lines =
+                    complete.then(|| self.code_markdown_lines(lang.as_deref(), code.as_ref()));
                 CachedBlock::Code(CachedCodeBlock {
                     language: lang.clone(),
                     code,
                     complete: *complete,
-                    markdown_items,
+                    highlighted_lines,
                 })
             }
             #[cfg(feature = "math")]
@@ -281,11 +283,11 @@ impl BlockRenderCache {
             .map(|artifact| cached_svg_from_artifact(artifact.as_ref()))
     }
 
-    pub(crate) fn code_markdown_items(
+    pub(crate) fn code_markdown_lines(
         &self,
         language: Option<&str>,
         code: &str,
-    ) -> Rc<Vec<iced::widget::markdown::Item>> {
+    ) -> Rc<Vec<iced::widget::markdown::Text>> {
         let key = CodeMarkdownCacheKey {
             language: language.map(str::to_string),
             code: code.to_string(),
@@ -294,7 +296,7 @@ impl BlockRenderCache {
             return Rc::clone(items);
         }
 
-        let items = Rc::new(crate::backends::iced::iced_markdown_items_for_codeblock(
+        let items = Rc::new(crate::backends::iced::iced_markdown_lines_for_codeblock(
             language, code,
         ));
         self.code_markdown_cache
@@ -407,13 +409,13 @@ fn markdown_source_to_html(source: &str, profile: ParseProfile) -> String {
     let prepared = if profile.uses_gfm_extensions() {
         crate::parse::gfm_preprocess::apply_gfm_extended_autolinks(source)
     } else {
-        source.to_string()
+        source.into()
     };
     let options = profile.pulldown_options();
     let mut html_buf = String::new();
     html::push_html(
         &mut html_buf,
-        Parser::new_ext(&prepared, options).map(|event| event.into_static()),
+        Parser::new_ext(prepared.as_ref(), options).map(|event| event.into_static()),
     );
     finish_markdown_html(html_buf, profile)
 }
@@ -436,12 +438,13 @@ fn pending_markdown_to_fragment(source: &str, profile: ParseProfile) -> HtmlFrag
     let prepared = if profile.uses_gfm_extensions() {
         crate::parse::gfm_preprocess::apply_gfm_extended_autolinks(source)
     } else {
-        source.to_string()
+        source.into()
     };
     let mut html_buf = String::new();
     html::push_html(
         &mut html_buf,
-        Parser::new_ext(&prepared, profile.pulldown_options()).map(|event| event.into_static()),
+        Parser::new_ext(prepared.as_ref(), profile.pulldown_options())
+            .map(|event| event.into_static()),
     );
     let html_buf = finish_markdown_html(html_buf, profile);
     if html_buf.is_empty() {
@@ -928,12 +931,10 @@ fn demo() {}
             "code must not be full document source"
         );
         assert!(
-            c.markdown_items
+            c.highlighted_lines
                 .as_ref()
-                .is_some_and(|items| items
-                    .iter()
-                    .any(|item| matches!(item, iced::widget::markdown::Item::CodeBlock { .. }))),
-            "expected iced markdown CodeBlock item for syntax highlighting"
+                .is_some_and(|lines| !lines.is_empty()),
+            "expected cached highlighted lines for syntax highlighting"
         );
     }
 

@@ -94,9 +94,8 @@ impl UpdateMsg {
 #[derive(Debug, Clone)]
 pub enum UpdateMsgKind {
     DetailsToggle(usize, bool),
-    CopyToClipboard(String),
+    CopyToClipboard(Arc<str>),
 }
-
 
 type FClickLink<M> = Box<dyn Fn(String) -> M>;
 type FDrawImage<'a, M, T> = Box<dyn Fn(ImageInfo) -> Element<'static, M, T> + 'a>;
