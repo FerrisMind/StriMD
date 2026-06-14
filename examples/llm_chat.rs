@@ -453,7 +453,8 @@ fn app_subscription(app: &App) -> Subscription<Message> {
     if app.busy {
         Subscription::batch([
             stream,
-            time::every(Duration::from_millis(STREAM_FLUSH_INTERVAL_MS)).map(|_| Message::FlushPending),
+            time::every(Duration::from_millis(STREAM_FLUSH_INTERVAL_MS))
+                .map(|_| Message::FlushPending),
         ])
     } else {
         stream

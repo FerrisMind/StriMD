@@ -13,8 +13,8 @@ use std::time::Instant;
 use iced::{Element, Theme};
 use strimd::{Document, MarkState, MarkWidget, ParseProfile};
 use tracing::{debug, info, info_span};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_subscriber::Layer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 fn main() {
     let mut render_rounds = 100usize;
@@ -56,8 +56,7 @@ fn main() {
         let subscriber = tracing_subscriber::registry().with(fmt_layer);
 
         if tracy_enabled {
-            let tracy_layer =
-                tracing_tracy::TracyLayer::default().with_filter(env_filter.clone());
+            let tracy_layer = tracing_tracy::TracyLayer::default().with_filter(env_filter.clone());
             subscriber.with(tracy_layer).init();
         } else {
             subscriber.init();

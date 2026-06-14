@@ -8,7 +8,7 @@
 
 Hard fork of [frostmark](https://github.com/Mrmayman/frostmark). Same iced widget surface where applicable; new headless APIs and a different Markdown/HTML stack — see [Provenance](#provenance--acknowledgments).
 
-![(Demo showing HTML and Markdown together)](https://github.com/Mrmayman/frostmark/raw/main/examples/assets/live_edit.png)
+![(Demo showing HTML and Markdown together)](https://github.com/FerrisMind/StriMD/raw/main/examples/assets/live_edit.png)
 
 ---
 
